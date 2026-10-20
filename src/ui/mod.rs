@@ -7,6 +7,8 @@ use crate::backend::Handle;
 use crate::config::{Config, View};
 use crate::model::{group_sessions, AppStrip, Command, Device, Flow, Snapshot};
 
+#[cfg(windows)]
+mod shell;
 mod strip;
 mod theme;
 
@@ -21,7 +23,17 @@ pub struct MixerApp {
     demo: bool,
     /// Device whose apps the compact view shows; `None` follows the default playback device.
     compact_device: Option<String>,
-    size_applied: bool,
+    mode: Mode,
+    #[cfg(windows)]
+    shell: shell::ShellState,
+}
+
+/// A normal window, or the borderless popup that appears from the tray icon.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Window,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Flyout,
 }
 
 impl MixerApp {
@@ -37,7 +49,9 @@ impl MixerApp {
             config,
             demo,
             compact_device: None,
-            size_applied: false,
+            mode: Mode::Window,
+            #[cfg(windows)]
+            shell: shell::ShellState::new(&cc.egui_ctx),
         }
     }
 
@@ -66,6 +80,13 @@ impl MixerApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let ctx = ui.ctx().clone();
+                if self.mode == Mode::Flyout {
+                    if ui.button("Open mixer").clicked() {
+                        #[cfg(windows)]
+                        self.show_window(&ctx);
+                    }
+                    return;
+                }
                 for (view, label) in [(View::Compact, "Compact"), (View::Console, "Console")] {
                     let selected = self.config.view == view;
                     if ui.selectable_label(selected, label).clicked() {
@@ -458,11 +479,25 @@ fn paint_h_slider(
     p.circle_stroke(knob, 8.0, egui::Stroke::new(2.0, color));
 }
 
-impl eframe::App for MixerApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        if !self.size_applied {
-            self.size_applied = true;
+impl MixerApp {
+    /// What to draw: the flyout is always the compact list, whatever the window view is.
+    fn view(&self) -> View {
+        match self.mode {
+            Mode::Flyout => View::Compact,
+            Mode::Window => self.config.view,
         }
+    }
+}
+
+impl eframe::App for MixerApp {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(windows)]
+        self.handle_shell(ctx);
+        #[cfg(not(windows))]
+        let _ = ctx;
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let snap = self.backend.snapshot();
         egui::Frame::new()
             .fill(theme::BG)
@@ -471,7 +506,7 @@ impl eframe::App for MixerApp {
                 ui.set_min_size(ui.available_size());
                 self.top_bar(ui);
                 ui.add_space(8.0);
-                match self.config.view {
+                match self.view() {
                     View::Console => self.console(ui, &snap),
                     View::Compact => self.compact(ui, &snap),
                 }

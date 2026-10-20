@@ -3,6 +3,8 @@
 mod backend;
 mod config;
 mod model;
+#[cfg(windows)]
+mod tray;
 mod ui;
 
 use config::Config;

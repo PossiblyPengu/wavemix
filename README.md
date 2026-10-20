@@ -15,11 +15,13 @@ Windows but has not yet been run on a real machine.
 - Compact view: pick a device, adjust its volume and each app's volume in a narrow list.
 - Several streams from one app (e.g. a browser) are merged into one strip.
 - Make any device the Windows default.
+- Tray icon: click it for a compact flyout above the icon (dismissed by clicking away), right-click for
+  Open mixer / Quit. Closing the window hides it to the tray.
 - `--demo` runs against animated fake devices; this is also the only mode off Windows.
 
 ## Not yet
 
-Tray icon and flyout, per-app output device routing, app icons, hotkeys, profiles/presets,
+Per-app output device routing, app icons, hotkeys, profiles/presets,
 a software mix engine (buses, EQ) on a virtual cable.
 
 ## Build
