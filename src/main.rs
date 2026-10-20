@@ -10,7 +10,54 @@ mod ui;
 use config::Config;
 use ui::MixerApp;
 
+/// `--dump`: write what the audio engine sees to a text file and exit. The release exe has no
+/// console, so this is how to report what a given machine looks like.
+fn dump() -> std::io::Result<()> {
+    use model::{Flow, Snapshot};
+    use std::fmt::Write as _;
+
+    let mut engine = engine();
+    engine.tick(true);
+    let snap: Snapshot = engine.tick(true);
+    let mut out = String::new();
+    for d in &snap.devices {
+        let flow = if d.flow == Flow::Render { "out" } else { "in " };
+        let _ = writeln!(
+            out,
+            "[{flow}] {} vol={:.2} muted={} default={}\n      id={}",
+            d.name, d.volume, d.muted, d.is_default, d.id
+        );
+    }
+    for s in &snap.sessions {
+        let _ = writeln!(
+            out,
+            "  app {:?} exe={:?} pid={} vol={:.2} muted={} active={} device={}",
+            s.name, s.exe, s.pid, s.volume, s.muted, s.active, s.device_id
+        );
+    }
+    let path = std::env::temp_dir().join("wavemix-dump.txt");
+    std::fs::write(&path, out)?;
+    println!("{}", path.display());
+    Ok(())
+}
+
+#[cfg(windows)]
+fn engine() -> Box<dyn backend::Engine> {
+    Box::new(backend::wasapi::WasapiEngine::new())
+}
+
+#[cfg(not(windows))]
+fn engine() -> Box<dyn backend::Engine> {
+    Box::new(backend::mock::MockEngine::new())
+}
+
 fn main() -> eframe::Result {
+    if std::env::args().any(|a| a == "--dump") {
+        if let Err(e) = dump() {
+            eprintln!("dump failed: {e}");
+        }
+        return Ok(());
+    }
     let config = Config::load();
     // The real engine needs Windows; elsewhere (and with --demo) run against animated fake data.
     let demo = !cfg!(windows) || std::env::args().any(|a| a == "--demo");
