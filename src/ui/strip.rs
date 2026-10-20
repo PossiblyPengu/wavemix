@@ -12,6 +12,7 @@ use crate::model::{amp_to_db, db_to_meter, percent};
 pub const STRIP_W: f32 = 78.0;
 const TRACK_H: f32 = 190.0;
 const METER_W: f32 = 10.0;
+pub const ICON: f32 = 20.0;
 /// Fraction of full scale the peak marker falls per second.
 const PEAK_FALL_PER_SEC: f32 = 0.35;
 /// Mouse-wheel step, in volume scalar per notch.
@@ -25,6 +26,8 @@ pub struct Strip<'a> {
     pub muted: bool,
     pub peak: f32,
     pub accent: Color32,
+    /// App icon; the row is reserved even when absent so strips line up.
+    pub icon: Option<&'a egui::TextureHandle>,
     /// Dim the strip when the app isn't making sound.
     pub idle: bool,
 }
@@ -44,6 +47,21 @@ impl Strip<'_> {
             |ui| {
                 ui.set_width(STRIP_W);
                 ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+
+                let (icon_rect, _) = ui.allocate_exact_size(vec2(ICON, ICON), Sense::hover());
+                if let Some(tex) = self.icon {
+                    let tint = if self.idle {
+                        Color32::from_white_alpha(120)
+                    } else {
+                        Color32::WHITE
+                    };
+                    ui.painter().image(
+                        tex.id(),
+                        icon_rect,
+                        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                        tint,
+                    );
+                }
 
                 let title_color = if self.idle {
                     theme::TEXT_DIM

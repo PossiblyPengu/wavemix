@@ -1,10 +1,11 @@
 //! A fake audio system with animated levels. It is the engine on non-Windows platforms (so the UI
 //! can be developed and screenshotted anywhere) and with `--demo` on Windows.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use super::Engine;
-use crate::model::{apply_command, Command, Device, Flow, Session, Snapshot};
+use crate::model::{apply_command, Command, Device, Flow, IconData, Session, Snapshot};
 
 pub struct MockEngine {
     state: Snapshot,
@@ -30,11 +31,43 @@ fn sess(id: &str, device: &str, pid: u32, exe: &str, name: &str, volume: f32) ->
         pid,
         exe: exe.into(),
         name: name.into(),
+        icon: Some(fake_icon(name)),
         volume,
         muted: false,
         peak: 0.0,
         active: true,
     }
+}
+
+/// A coloured rounded square derived from the name, standing in for a real app icon.
+fn fake_icon(name: &str) -> Arc<IconData> {
+    const N: usize = 32;
+    let h = name
+        .bytes()
+        .fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    let color = [
+        60 + (h & 0x7f) as u8,
+        60 + ((h >> 8) & 0x7f) as u8,
+        60 + ((h >> 16) & 0x7f) as u8,
+    ];
+    let mut rgba = vec![0u8; N * N * 4];
+    for y in 0..N {
+        for x in 0..N {
+            let (dx, dy) = (x.min(N - 1 - x), y.min(N - 1 - y));
+            // Knock the corners off.
+            if dx + dy < 5 {
+                continue;
+            }
+            let i = (y * N + x) * 4;
+            rgba[i..i + 3].copy_from_slice(&color);
+            rgba[i + 3] = 255;
+        }
+    }
+    Arc::new(IconData {
+        width: N,
+        height: N,
+        rgba,
+    })
 }
 
 impl MockEngine {
@@ -101,5 +134,25 @@ impl Engine for MockEngine {
 
     fn apply(&mut self, cmd: &Command) {
         apply_command(&mut self.state, cmd);
+        // Routing: move the app's sessions to the chosen device, or back to the default one.
+        if let Command::SetAppDevice { pids, device_id } = cmd {
+            let target = device_id.clone().or_else(|| {
+                self.state
+                    .devices
+                    .iter()
+                    .find(|d| d.flow == Flow::Render && d.is_default)
+                    .map(|d| d.id.clone())
+            });
+            if let Some(t) = target {
+                for s in self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .filter(|s| pids.contains(&s.pid))
+                {
+                    s.device_id = t.clone();
+                }
+            }
+        }
     }
 }

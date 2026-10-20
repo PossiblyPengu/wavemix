@@ -2,6 +2,7 @@
 //! [`Command`]s back. Nothing in here touches the OS, so it is all unit-testable.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Flow {
@@ -25,6 +26,14 @@ pub struct Device {
     pub is_default: bool,
 }
 
+/// An app icon as straight RGBA, shared cheaply between snapshots.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IconData {
+    pub width: usize,
+    pub height: usize,
+    pub rgba: Vec<u8>,
+}
+
 /// One WASAPI audio session: a single stream group from one process on one device.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Session {
@@ -36,6 +45,7 @@ pub struct Session {
     pub exe: String,
     /// Name to show: the session's own display name if it set one, else the executable.
     pub name: String,
+    pub icon: Option<Arc<IconData>>,
     pub volume: f32,
     pub muted: bool,
     pub peak: f32,
@@ -74,6 +84,11 @@ pub enum Command {
     SetDefaultDevice {
         id: String,
         flow: Flow,
+    },
+    /// Pin an app's output to a device (`None` returns it to the Windows default).
+    SetAppDevice {
+        pids: Vec<u32>,
+        device_id: Option<String>,
     },
 }
 
@@ -116,6 +131,8 @@ pub fn apply_command(snap: &mut Snapshot, cmd: &Command) {
                 s.muted = *muted;
             }
         }
+        // The app moves devices only once the engine re-enumerates, so there is nothing to patch.
+        Command::SetAppDevice { .. } => {}
         Command::SetDefaultDevice { id, flow } => {
             for d in snap.devices.iter_mut().filter(|d| d.flow == *flow) {
                 d.is_default = &d.id == id;
@@ -129,6 +146,8 @@ pub fn apply_command(snap: &mut Snapshot, cmd: &Command) {
 pub struct AppStrip {
     pub key: String,
     pub name: String,
+    pub icon: Option<Arc<IconData>>,
+    pub pids: Vec<u32>,
     pub device_id: String,
     /// `(device_id, session_id)` for every underlying session; commands fan out to all of them.
     pub sessions: Vec<(String, String)>,
@@ -151,6 +170,8 @@ pub fn group_sessions(sessions: &[Session], device_id: &str) -> Vec<AppStrip> {
         let g = groups.entry(key.clone()).or_insert_with(|| AppStrip {
             key,
             name: s.name.clone(),
+            icon: None,
+            pids: Vec::new(),
             device_id: s.device_id.clone(),
             sessions: Vec::new(),
             volume: 0.0,
@@ -159,6 +180,12 @@ pub fn group_sessions(sessions: &[Session], device_id: &str) -> Vec<AppStrip> {
             active: false,
         });
         g.sessions.push((s.device_id.clone(), s.id.clone()));
+        if s.pid != 0 && !g.pids.contains(&s.pid) {
+            g.pids.push(s.pid);
+        }
+        if g.icon.is_none() {
+            g.icon = s.icon.clone();
+        }
         // The strip's fader shows the loudest member; muted only if every member is.
         g.volume = g.volume.max(s.volume);
         g.muted &= s.muted;
@@ -208,6 +235,7 @@ mod tests {
             name: exe.into(),
             volume: vol,
             muted,
+            icon: None,
             peak: 0.0,
             active,
         }

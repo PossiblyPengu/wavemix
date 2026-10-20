@@ -8,7 +8,11 @@ use std::time::{Duration, Instant};
 
 use crate::model::{apply_command, Command, Snapshot};
 
+#[cfg(windows)]
+mod appinfo;
 pub mod mock;
+#[cfg(windows)]
+mod routing;
 #[cfg(windows)]
 pub mod wasapi;
 

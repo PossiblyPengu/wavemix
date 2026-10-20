@@ -2,7 +2,12 @@
 
 mod backend;
 mod config;
+#[cfg(windows)]
+mod hotkeys;
 mod model;
+mod preset;
+#[cfg(windows)]
+mod startup;
 #[cfg(windows)]
 mod tray;
 mod ui;
@@ -62,10 +67,14 @@ fn main() -> eframe::Result {
     // The real engine needs Windows; elsewhere (and with --demo) run against animated fake data.
     let demo = !cfg!(windows) || std::env::args().any(|a| a == "--demo");
 
+    // Launched at login: start hidden in the tray.
+    let background = cfg!(windows) && std::env::args().any(|a| a == "--background");
+
     let [w, h] = MixerApp::initial_size(config.view);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("wavemix")
+            .with_visible(!background)
             .with_inner_size([w, h])
             .with_min_inner_size([340.0, 420.0]),
         ..Default::default()
@@ -87,7 +96,9 @@ fn main() -> eframe::Result {
                 #[cfg(not(windows))]
                 unreachable!("demo is always set off Windows")
             };
-            Ok(Box::new(MixerApp::new(cc, handle, config, demo)))
+            Ok(Box::new(MixerApp::new(
+                cc, handle, config, demo, background,
+            )))
         }),
     )
 }

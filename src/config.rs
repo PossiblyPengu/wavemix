@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::preset::Preset;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum View {
@@ -13,10 +15,49 @@ pub enum View {
     Compact,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+/// Global hotkeys, as strings like `ctrl+alt+up`. Empty means unbound.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Hotkeys {
+    pub volume_up: String,
+    pub volume_down: String,
+    pub mute: String,
+}
+
+impl Default for Hotkeys {
+    fn default() -> Self {
+        Self {
+            volume_up: "ctrl+alt+up".into(),
+            volume_down: "ctrl+alt+down".into(),
+            mute: "ctrl+alt+m".into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub view: View,
+    pub run_at_startup: bool,
+    pub hotkeys: Hotkeys,
+    /// Hotkey volume step, in percentage points.
+    pub volume_step: u32,
+    /// Per-app output routing uses an undocumented Windows interface, so it is opt-in.
+    pub experimental_routing: bool,
+    pub presets: Vec<Preset>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            view: View::default(),
+            run_at_startup: false,
+            hotkeys: Hotkeys::default(),
+            volume_step: 5,
+            experimental_routing: false,
+            presets: Vec::new(),
+        }
+    }
 }
 
 fn path() -> Option<PathBuf> {
@@ -60,5 +101,19 @@ mod tests {
         assert_eq!(c.view, View::Console);
         let c: Config = serde_json::from_str(r#"{"view":"compact","future":1}"#).unwrap();
         assert_eq!(c.view, View::Compact);
+        assert_eq!(c.volume_step, 5);
+        assert_eq!(c.hotkeys.mute, "ctrl+alt+m");
+    }
+
+    #[test]
+    fn presets_round_trip() {
+        let mut c = Config::default();
+        c.presets.push(Preset {
+            name: "Call".into(),
+            devices: vec![],
+            apps: vec![],
+        });
+        let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.presets, c.presets);
     }
 }

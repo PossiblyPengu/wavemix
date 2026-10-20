@@ -9,11 +9,10 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::Path;
 
 use windows::core::{interface, Interface, GUID, HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
-use windows::Win32::Foundation::{CloseHandle, S_OK};
+use windows::Win32::Foundation::S_OK;
 use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioMeterInformation};
 use windows::Win32::Media::Audio::{
     eCapture, eCommunications, eConsole, eMultimedia, eRender, AudioSessionStateActive,
@@ -25,10 +24,8 @@ use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
 };
-use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-};
 
+use super::appinfo::{self, AppInfo};
 use super::Engine;
 use crate::model::{Command, Device, Flow, Session, Snapshot};
 
@@ -98,8 +95,8 @@ pub struct WasapiEngine {
     enumerator: IMMDeviceEnumerator,
     devices: Vec<DeviceHandle>,
     sessions: Vec<SessionHandle>,
-    /// pid -> executable stem, so a rescan doesn't reopen every process.
-    exe_cache: HashMap<u32, String>,
+    /// pid -> who it is, so a rescan doesn't reopen every process and re-extract its icon.
+    app_cache: HashMap<u32, AppInfo>,
 }
 
 impl WasapiEngine {
@@ -115,7 +112,7 @@ impl WasapiEngine {
                 enumerator,
                 devices: Vec::new(),
                 sessions: Vec::new(),
-                exe_cache: HashMap::new(),
+                app_cache: HashMap::new(),
             }
         }
     }
@@ -192,11 +189,12 @@ impl WasapiEngine {
                 };
                 let system = control2.IsSystemSoundsSession() == S_OK;
                 let pid = control2.GetProcessId().unwrap_or(0);
-                let exe = if system || pid == 0 {
-                    String::new()
+                let app = if system || pid == 0 {
+                    AppInfo::default()
                 } else {
-                    self.exe_name(pid)
+                    self.app_info(pid)
                 };
+                let exe = app.stem.clone();
                 let display = control
                     .GetDisplayName()
                     .ok()
@@ -206,7 +204,7 @@ impl WasapiEngine {
                 let name = if system {
                     "System sounds".to_string()
                 } else {
-                    display.unwrap_or_else(|| {
+                    display.or(app.name.clone()).unwrap_or_else(|| {
                         if exe.is_empty() {
                             format!("Process {pid}")
                         } else {
@@ -221,6 +219,7 @@ impl WasapiEngine {
                         pid,
                         exe: if system { "system-sounds".into() } else { exe },
                         name,
+                        icon: app.icon,
                         volume: volume.GetMasterVolume().unwrap_or(1.0),
                         muted: volume.GetMute().map(|b| b.as_bool()).unwrap_or(false),
                         peak: 0.0,
@@ -234,10 +233,10 @@ impl WasapiEngine {
         }
     }
 
-    fn exe_name(&mut self, pid: u32) -> String {
-        self.exe_cache
+    fn app_info(&mut self, pid: u32) -> AppInfo {
+        self.app_cache
             .entry(pid)
-            .or_insert_with(|| process_stem(pid).unwrap_or_default())
+            .or_insert_with(|| appinfo::lookup(pid))
             .clone()
     }
 
@@ -339,6 +338,9 @@ impl Engine for WasapiEngine {
                     }
                 }
                 Command::SetDefaultDevice { id, .. } => self.set_default(id),
+                Command::SetAppDevice { pids, device_id } => {
+                    super::routing::set_app_device(pids, device_id.as_deref());
+                }
             }
         }
     }
@@ -390,24 +392,4 @@ unsafe fn take_pwstr(p: PWSTR) -> Option<String> {
     let s = p.to_string().ok();
     CoTaskMemFree(Some(p.0 as *const c_void));
     s
-}
-
-fn process_stem(pid: u32) -> Option<String> {
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let mut buf = [0u16; 1024];
-        let mut len = buf.len() as u32;
-        let result = QueryFullProcessImageNameW(
-            handle,
-            PROCESS_NAME_WIN32,
-            PWSTR(buf.as_mut_ptr()),
-            &mut len,
-        );
-        let _ = CloseHandle(handle);
-        result.ok()?;
-        let path = String::from_utf16_lossy(&buf[..len as usize]);
-        Path::new(&path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-    }
 }

@@ -1,12 +1,17 @@
 //! The mixer window. Two views of the same state: the console (every device and every app as a
 //! fader strip, Voicemeeter-style) and the compact list (one device at a time, EarTrumpet-style).
 
-use eframe::egui::{self, vec2, Align, Id, Layout, RichText, Sense, Ui};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use eframe::egui::{self, vec2, Align, Id, Layout, RichText, Sense, TextureHandle, Ui};
 
 use crate::backend::Handle;
 use crate::config::{Config, View};
-use crate::model::{group_sessions, AppStrip, Command, Device, Flow, Snapshot};
+use crate::model::{group_sessions, AppStrip, Command, Device, Flow, IconData, Snapshot};
 
+mod settings;
 #[cfg(windows)]
 mod shell;
 mod strip;
@@ -24,6 +29,13 @@ pub struct MixerApp {
     /// Device whose apps the compact view shows; `None` follows the default playback device.
     compact_device: Option<String>,
     mode: Mode,
+    /// App icons uploaded as textures, by app key. Filled lazily while drawing.
+    icons: RefCell<HashMap<String, TextureHandle>>,
+    show_settings: bool,
+    preset_name: String,
+    /// Hotkey text being edited in settings; applied with the Apply button.
+    #[cfg(windows)]
+    hk_edit: crate::config::Hotkeys,
     #[cfg(windows)]
     shell: shell::ShellState,
 }
@@ -42,17 +54,49 @@ impl MixerApp {
         backend: Handle,
         config: Config,
         demo: bool,
+        background: bool,
     ) -> Self {
         theme::apply(&cc.egui_ctx);
-        Self {
+        #[cfg(not(windows))]
+        let _ = background;
+        #[cfg(windows)]
+        let hk_edit = config.hotkeys.clone();
+        #[cfg_attr(not(windows), allow(unused_mut))]
+        let mut app = Self {
             backend,
             config,
             demo,
             compact_device: None,
             mode: Mode::Window,
+            icons: RefCell::default(),
+            show_settings: false,
+            preset_name: String::new(),
             #[cfg(windows)]
-            shell: shell::ShellState::new(&cc.egui_ctx),
+            hk_edit,
+            #[cfg(windows)]
+            shell: shell::ShellState::new(&cc.egui_ctx, background),
+        };
+        #[cfg(windows)]
+        app.apply_hotkeys();
+        app
+    }
+
+    /// The texture for an app's icon, uploading it the first time it is seen.
+    fn icon(
+        &self,
+        ctx: &egui::Context,
+        key: &str,
+        data: &Option<Arc<IconData>>,
+    ) -> Option<TextureHandle> {
+        let data = data.as_ref()?;
+        let mut cache = self.icons.borrow_mut();
+        if let Some(t) = cache.get(key) {
+            return Some(t.clone());
         }
+        let image = egui::ColorImage::from_rgba_unmultiplied([data.width, data.height], &data.rgba);
+        let tex = ctx.load_texture(format!("icon-{key}"), image, egui::TextureOptions::LINEAR);
+        cache.insert(key.to_string(), tex.clone());
+        Some(tex)
     }
 
     pub fn initial_size(view: View) -> [f32; 2] {
@@ -71,7 +115,7 @@ impl MixerApp {
         }
     }
 
-    fn top_bar(&mut self, ui: &mut Ui) {
+    fn top_bar(&mut self, ui: &mut Ui, snap: &Snapshot) {
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             ui.label(RichText::new("wavemix").size(16.0).strong());
@@ -93,6 +137,14 @@ impl MixerApp {
                         self.set_view(&ctx, view);
                     }
                 }
+                ui.add_space(8.0);
+                if ui
+                    .selectable_label(self.show_settings, "Settings")
+                    .clicked()
+                {
+                    self.show_settings = !self.show_settings;
+                }
+                self.presets_menu(ui, snap);
             });
         });
     }
@@ -135,7 +187,7 @@ impl MixerApp {
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
                         for app in &apps {
-                            self.app_strip(ui, app);
+                            self.app_strip(ui, snap, app);
                         }
                         if !apps.is_empty() {
                             ui.separator();
@@ -188,19 +240,52 @@ impl MixerApp {
         );
     }
 
-    fn app_strip(&self, ui: &mut Ui, app: &AppStrip) {
-        let out = Strip {
-            id: Id::unique(egui::IdSalt::new(("app", &app.device_id, &app.key))),
-            title: &app.name,
-            subtitle: if app.active { "playing" } else { "idle" },
-            volume: app.volume,
-            muted: app.muted,
-            peak: app.peak,
-            accent: theme::ACCENT,
-            idle: !app.active,
-        }
-        .show(ui);
-        self.send_app(app, out);
+    fn app_strip(&self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip) {
+        let icon = self.icon(ui.ctx(), &app.key, &app.icon);
+        ui.vertical(|ui| {
+            let out = Strip {
+                id: Id::unique(egui::IdSalt::new(("app", &app.device_id, &app.key))),
+                title: &app.name,
+                subtitle: if app.active { "playing" } else { "idle" },
+                volume: app.volume,
+                muted: app.muted,
+                peak: app.peak,
+                accent: theme::ACCENT,
+                icon: icon.as_ref(),
+                idle: !app.active,
+            }
+            .show(ui);
+            self.send_app(app, out);
+            if self.config.experimental_routing {
+                self.route_menu(ui, snap, app);
+            }
+        });
+    }
+
+    /// "Output" menu: pin this app to a playback device, or hand it back to the Windows default.
+    fn route_menu(&self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip) {
+        ui.menu_button("Output", |ui| {
+            for d in snap.devices.iter().filter(|d| d.flow == Flow::Render) {
+                if ui
+                    .selectable_label(d.id == app.device_id, &d.name)
+                    .clicked()
+                {
+                    self.backend.send(Command::SetAppDevice {
+                        pids: app.pids.clone(),
+                        device_id: Some(d.id.clone()),
+                    });
+                    ui.close();
+                }
+            }
+            ui.separator();
+            if ui.button("Windows default").clicked() {
+                self.backend.send(Command::SetAppDevice {
+                    pids: app.pids.clone(),
+                    device_id: None,
+                });
+                ui.close();
+            }
+        });
     }
 
     fn send_app(&self, app: &AppStrip, out: StripOutput) {
@@ -235,6 +320,7 @@ impl MixerApp {
             muted: d.muted,
             peak: d.peak,
             accent,
+            icon: None,
             idle: false,
         }
         .show(ui);
@@ -301,13 +387,18 @@ impl MixerApp {
         ui.add_space(8.0);
         self.compact_row(
             ui,
-            Id::unique(egui::IdSalt::new(("cdev", &dev.id))),
-            "Device volume",
-            dev.volume,
-            dev.muted,
-            dev.peak,
-            theme::ACCENT_OUT,
-            true,
+            snap,
+            Row {
+                id: Id::unique(egui::IdSalt::new(("cdev", &dev.id))),
+                name: "Device volume",
+                icon: None,
+                volume: dev.volume,
+                muted: dev.muted,
+                peak: dev.peak,
+                accent: theme::ACCENT_OUT,
+                lit: true,
+                route: None,
+            },
             |s, v| match v {
                 RowEdit::Volume(volume) => s.backend.send(Command::SetDeviceVolume {
                     id: dev.id.clone(),
@@ -330,15 +421,21 @@ impl MixerApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for app in &apps {
+                    let icon = self.icon(ui.ctx(), &app.key, &app.icon);
                     self.compact_row(
                         ui,
-                        Id::unique(egui::IdSalt::new(("capp", &app.device_id, &app.key))),
-                        &app.name,
-                        app.volume,
-                        app.muted,
-                        app.peak,
-                        theme::ACCENT,
-                        app.active,
+                        snap,
+                        Row {
+                            id: Id::unique(egui::IdSalt::new(("capp", &app.device_id, &app.key))),
+                            name: &app.name,
+                            icon,
+                            volume: app.volume,
+                            muted: app.muted,
+                            peak: app.peak,
+                            accent: theme::ACCENT,
+                            lit: app.active,
+                            route: Some(app),
+                        },
                         |s, v| {
                             let out = match v {
                                 RowEdit::Volume(x) => StripOutput {
@@ -359,19 +456,24 @@ impl MixerApp {
     }
 
     /// A single EarTrumpet-style row: name, mute button, horizontal slider, percent.
-    #[allow(clippy::too_many_arguments)]
     fn compact_row(
         &self,
         ui: &mut Ui,
-        id: Id,
-        name: &str,
-        volume: f32,
-        muted: bool,
-        peak: f32,
-        accent: egui::Color32,
-        lit: bool,
+        snap: &Snapshot,
+        row: Row,
         mut edit: impl FnMut(&Self, RowEdit),
     ) {
+        let Row {
+            id,
+            name,
+            icon,
+            volume,
+            muted,
+            peak,
+            accent,
+            lit,
+            route,
+        } = row;
         egui::Frame::new()
             .fill(theme::PANEL)
             .corner_radius(8)
@@ -379,7 +481,17 @@ impl MixerApp {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let color = if lit { theme::TEXT } else { theme::TEXT_DIM };
-                ui.label(RichText::new(name).size(13.0).color(color));
+                ui.horizontal(|ui| {
+                    if let Some(tex) = &icon {
+                        ui.add(egui::Image::new(tex).fit_to_exact_size(vec2(18.0, 18.0)));
+                    }
+                    ui.label(RichText::new(name).size(13.0).color(color));
+                    if let (Some(app), true) = (route, self.config.experimental_routing) {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            self.route_menu(ui, snap, app);
+                        });
+                    }
+                });
                 ui.horizontal(|ui| {
                     let (mute_txt, mute_col) = if muted {
                         ("M", theme::MUTE)
@@ -421,6 +533,20 @@ impl MixerApp {
                 });
             });
     }
+}
+
+/// What a compact row shows.
+struct Row<'a> {
+    id: Id,
+    name: &'a str,
+    icon: Option<TextureHandle>,
+    volume: f32,
+    muted: bool,
+    peak: f32,
+    accent: egui::Color32,
+    lit: bool,
+    /// Present for app rows, to offer the output-routing menu.
+    route: Option<&'a AppStrip>,
 }
 
 enum RowEdit {
@@ -504,12 +630,13 @@ impl eframe::App for MixerApp {
             .inner_margin(12)
             .show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
-                self.top_bar(ui);
+                self.top_bar(ui, &snap);
                 ui.add_space(8.0);
                 match self.view() {
                     View::Console => self.console(ui, &snap),
                     View::Compact => self.compact(ui, &snap),
                 }
             });
+        self.settings_window(ui.ctx());
     }
 }

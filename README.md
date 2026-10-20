@@ -4,8 +4,8 @@ A per-app and per-device audio mixer for Windows: a Voicemeeter-style console of
 live meters, and an EarTrumpet-style compact list. It controls Windows' own audio (Core Audio /
 WASAPI sessions), so it needs no driver.
 
-**Status: early.** The model, UI and mock engine are tested here; the WASAPI engine type-checks for
-Windows but has not yet been run on a real machine.
+**Status: early.** Logic and UI are unit-tested; the Windows audio, tray, hotkey and routing code is
+only exercised by running it on Windows.
 
 ## Features
 
@@ -19,10 +19,21 @@ Windows but has not yet been run on a real machine.
   Open mixer / Quit. Closing the window hides it to the tray.
 - `--demo` runs against animated fake devices; this is also the only mode off Windows.
 
+- App icons and friendly names ("Google Chrome", not `chrome`), read from each app's exe.
+- Presets: save the current volumes and mutes under a name and re-apply them in one click. Apps or
+  devices that aren't present are skipped.
+- Global hotkeys for the default playback device (defaults `ctrl+alt+up`, `ctrl+alt+down`,
+  `ctrl+alt+m`; rebind in Settings). Reports a hotkey another program already owns.
+- Start with Windows (per-user Run key, launches straight into the tray).
+- Per-app output routing (**experimental**, off by default; enable in Settings). Adds an Output menu
+  to each app. It uses an undocumented Windows interface laid out for Windows 10 21H2 / Windows 11;
+  on other builds it silently does nothing.
+- `--background` starts hidden in the tray; `--dump` writes the devices and apps it sees to
+  `%TEMP%\wavemix-dump.txt`, for bug reports.
+
 ## Not yet
 
-Per-app output device routing, app icons, hotkeys, profiles/presets,
-a software mix engine (buses, EQ) on a virtual cable.
+On-screen display for hotkey changes, a software mix engine (buses, EQ) on a virtual cable.
 
 ## Build
 

@@ -5,6 +5,8 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, pos2, vec2};
 
 use super::{MixerApp, Mode};
+use crate::hotkeys::{HotkeyAction, Hotkeys};
+use crate::model::{Command, Flow};
 use crate::tray::{Anchor, Tray, TrayAction};
 
 /// Flyout popup size, in points.
@@ -22,17 +24,28 @@ pub struct ShellState {
     shown_at: Instant,
     hidden_at: Option<Instant>,
     focused_once: bool,
+    hotkeys: Hotkeys,
+    /// Problems from the last hotkey or startup change, shown in settings.
+    pub hk_status: Vec<String>,
 }
 
 impl ShellState {
-    pub fn new(ctx: &egui::Context) -> Self {
+    pub fn new(ctx: &egui::Context, background: bool) -> Self {
+        let tray = Tray::new(ctx);
+        // Started at login: stay in the tray. Without a tray there'd be no way back, so show.
+        let visible = !background || tray.is_none();
+        if visible && background {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        }
         Self {
-            tray: Tray::new(ctx),
-            visible: true,
+            tray,
+            visible,
             quitting: false,
             shown_at: Instant::now(),
             hidden_at: None,
             focused_once: false,
+            hotkeys: Hotkeys::new(ctx),
+            hk_status: Vec::new(),
         }
     }
 }
@@ -66,6 +79,10 @@ impl MixerApp {
             }
         }
 
+        for action in self.shell.hotkeys.poll() {
+            self.run_hotkey(action);
+        }
+
         // The close button hides to the tray, but only if there is a tray to come back from.
         let close = ctx.input(|i| i.viewport().close_requested());
         if close && !self.shell.quitting && self.shell.tray.is_some() {
@@ -82,6 +99,45 @@ impl MixerApp {
                 self.hide(ctx);
             }
         }
+    }
+
+    fn run_hotkey(&self, action: HotkeyAction) {
+        let snap = self.backend.snapshot();
+        let Some(d) = snap
+            .devices
+            .iter()
+            .find(|d| d.flow == Flow::Render && d.is_default)
+        else {
+            return;
+        };
+        let step = self.config.volume_step as f32 / 100.0;
+        let id = d.id.clone();
+        self.backend.send(match action {
+            HotkeyAction::VolumeUp => Command::SetDeviceVolume {
+                id,
+                volume: (d.volume + step).min(1.0),
+            },
+            HotkeyAction::VolumeDown => Command::SetDeviceVolume {
+                id,
+                volume: (d.volume - step).max(0.0),
+            },
+            HotkeyAction::ToggleMute => Command::SetDeviceMute {
+                id,
+                muted: !d.muted,
+            },
+        });
+    }
+
+    /// Register the hotkeys in `config`.
+    pub(super) fn apply_hotkeys(&mut self) {
+        self.shell.hk_status = self.shell.hotkeys.apply(&self.config.hotkeys);
+    }
+
+    /// Settings' Apply button: take the edited text, save it, and register.
+    pub(super) fn apply_hotkeys_from_edit(&mut self) {
+        self.config.hotkeys = self.hk_edit.clone();
+        self.config.save();
+        self.apply_hotkeys();
     }
 
     fn hide(&mut self, ctx: &egui::Context) {
