@@ -45,6 +45,11 @@ pub struct Config {
     /// Per-app output routing uses an undocumented Windows interface, so it is opt-in.
     pub experimental_routing: bool,
     pub presets: Vec<Preset>,
+    /// Show the on-screen volume display when a hotkey changes the volume.
+    pub osd: bool,
+    pub osd_vertical: bool,
+    /// OSD opacity, percent.
+    pub osd_opacity: u32,
 }
 
 impl Default for Config {
@@ -56,6 +61,9 @@ impl Default for Config {
             volume_step: 5,
             experimental_routing: false,
             presets: Vec::new(),
+            osd: true,
+            osd_vertical: false,
+            osd_opacity: 95,
         }
     }
 }
@@ -103,6 +111,8 @@ mod tests {
         assert_eq!(c.view, View::Compact);
         assert_eq!(c.volume_step, 5);
         assert_eq!(c.hotkeys.mute, "ctrl+alt+m");
+        assert!(c.osd);
+        assert_eq!(c.osd_opacity, 95);
     }
 
     #[test]

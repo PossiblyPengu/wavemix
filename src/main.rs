@@ -5,6 +5,7 @@ mod config;
 #[cfg(windows)]
 mod hotkeys;
 mod model;
+mod osd;
 mod preset;
 #[cfg(windows)]
 mod startup;

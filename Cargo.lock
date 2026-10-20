@@ -3012,7 +3012,7 @@ dependencies = [
 
 [[package]]
 name = "wavemix"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "global-hotkey",
@@ -3021,6 +3021,7 @@ dependencies = [
  "tray-icon",
  "windows",
  "windows-core",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 

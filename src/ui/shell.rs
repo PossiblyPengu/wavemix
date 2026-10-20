@@ -5,8 +5,11 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, pos2, vec2};
 
 use super::{MixerApp, Mode};
+use crate::backend::Handle;
+use crate::config::Config;
 use crate::hotkeys::{HotkeyAction, Hotkeys};
 use crate::model::{Command, Flow};
+use crate::osd::{Osd, OsdSettings};
 use crate::tray::{Anchor, Tray, TrayAction};
 
 /// Flyout popup size, in points.
@@ -25,12 +28,13 @@ pub struct ShellState {
     hidden_at: Option<Instant>,
     focused_once: bool,
     hotkeys: Hotkeys,
+    osd: Option<Osd>,
     /// Problems from the last hotkey or startup change, shown in settings.
     pub hk_status: Vec<String>,
 }
 
 impl ShellState {
-    pub fn new(ctx: &egui::Context, background: bool) -> Self {
+    pub fn new(ctx: &egui::Context, background: bool, backend: Handle, config: &Config) -> Self {
         let tray = Tray::new(ctx);
         // Started at login: stay in the tray. Without a tray there'd be no way back, so show.
         let visible = !background || tray.is_none();
@@ -45,12 +49,28 @@ impl ShellState {
             hidden_at: None,
             focused_once: false,
             hotkeys: Hotkeys::new(ctx),
+            osd: Osd::new(backend, osd_settings(config)),
             hk_status: Vec::new(),
         }
     }
 }
 
+pub fn osd_settings(config: &Config) -> OsdSettings {
+    OsdSettings {
+        enabled: config.osd,
+        vertical: config.osd_vertical,
+        opacity_pct: config.osd_opacity,
+    }
+}
+
 impl MixerApp {
+    /// Push changed OSD settings to the display thread.
+    pub(super) fn sync_osd(&self) {
+        if let Some(osd) = &self.shell.osd {
+            osd.set_settings(osd_settings(&self.config));
+        }
+    }
+
     pub(super) fn handle_shell(&mut self, ctx: &egui::Context) {
         let actions = self
             .shell
@@ -112,6 +132,12 @@ impl MixerApp {
         };
         let step = self.config.volume_step as f32 / 100.0;
         let id = d.id.clone();
+        // The mixer window shows the change itself; otherwise pop the OSD.
+        if !self.shell.visible {
+            if let Some(osd) = &self.shell.osd {
+                osd.poke();
+            }
+        }
         self.backend.send(match action {
             HotkeyAction::VolumeUp => Command::SetDeviceVolume {
                 id,

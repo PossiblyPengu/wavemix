@@ -61,6 +61,8 @@ impl MixerApp {
         let _ = background;
         #[cfg(windows)]
         let hk_edit = config.hotkeys.clone();
+        #[cfg(windows)]
+        let shell = shell::ShellState::new(&cc.egui_ctx, background, backend.clone(), &config);
         #[cfg_attr(not(windows), allow(unused_mut))]
         let mut app = Self {
             backend,
@@ -74,7 +76,7 @@ impl MixerApp {
             #[cfg(windows)]
             hk_edit,
             #[cfg(windows)]
-            shell: shell::ShellState::new(&cc.egui_ctx, background),
+            shell,
         };
         #[cfg(windows)]
         app.apply_hotkeys();

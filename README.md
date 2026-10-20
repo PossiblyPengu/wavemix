@@ -24,6 +24,9 @@ only exercised by running it on Windows.
   devices that aren't present are skipped.
 - Global hotkeys for the default playback device (defaults `ctrl+alt+up`, `ctrl+alt+down`,
   `ctrl+alt+m`; rebind in Settings). Reports a hotkey another program already owns.
+- On-screen volume display when a hotkey changes the volume: the bar from voicemeeter-osd, ported
+  over. It follows the default playback device, shows a live level meter, never takes focus, ignores
+  clicks, and stays away from fullscreen games. Horizontal or vertical, adjustable opacity.
 - Start with Windows (per-user Run key, launches straight into the tray).
 - Per-app output routing (**experimental**, off by default; enable in Settings). Adds an Output menu
   to each app. It uses an undocumented Windows interface laid out for Windows 10 21H2 / Windows 11;
@@ -33,7 +36,7 @@ only exercised by running it on Windows.
 
 ## Not yet
 
-On-screen display for hotkey changes, a software mix engine (buses, EQ) on a virtual cable.
+A software mix engine (buses, EQ) on a virtual cable.
 
 ## Build
 

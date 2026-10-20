@@ -95,6 +95,28 @@ impl MixerApp {
                 ui.label(RichText::new(msg).size(11.0).color(theme::MUTE));
             }
             ui.add_space(8.0);
+
+            ui.label(RichText::new("On-screen display").strong());
+            let (mut osd, mut vertical, mut opacity) = (
+                self.config.osd,
+                self.config.osd_vertical,
+                self.config.osd_opacity,
+            );
+            let mut changed = ui
+                .checkbox(&mut osd, "Show when a hotkey changes the volume")
+                .changed();
+            changed |= ui.checkbox(&mut vertical, "Vertical bar").changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut opacity, 40..=100).text("Opacity %"))
+                .changed();
+            if changed {
+                self.config.osd = osd;
+                self.config.osd_vertical = vertical;
+                self.config.osd_opacity = opacity;
+                self.config.save();
+                self.sync_osd();
+            }
+            ui.add_space(8.0);
         }
 
         let mut step = self.config.volume_step;
