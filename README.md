@@ -9,10 +9,11 @@ only exercised by running it on Windows.
 
 ## Features
 
-- Console view: every playback and recording device as a group, with one strip per app on that
-  device plus the device master. Vertical faders, VU meters with peak hold, mute, scroll to adjust,
-  double-click to reset.
-- Compact view: pick a device, adjust its volume and each app's volume in a narrow list.
+- Mixer view: apps on the left, playback devices and microphones on the right, in the spirit of
+  Voicemeeter. Every app has a fader, live meter with peak hold, mute, a status dot (playing or idle)
+  and a pill showing which device it plays through. Scroll to adjust, double-click for 100%.
+- Compact view, in the spirit of EarTrumpet: the output you're on at the top, then every playing app
+  with a slider and its device pill; idle apps are tucked under "Not playing".
 - Several streams from one app (e.g. a browser) are merged into one strip.
 - Make any device the Windows default.
 - Tray icon: click it for a compact flyout above the icon (dismissed by clicking away), right-click for

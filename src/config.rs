@@ -47,6 +47,8 @@ pub struct Config {
     pub presets: Vec<Preset>,
     /// Show the on-screen volume display when a hotkey changes the volume.
     pub osd: bool,
+    /// Console view: list apps that aren't currently playing.
+    pub show_idle: bool,
     pub osd_vertical: bool,
     /// OSD opacity, percent.
     pub osd_opacity: u32,
@@ -62,6 +64,7 @@ impl Default for Config {
             experimental_routing: false,
             presets: Vec::new(),
             osd: true,
+            show_idle: true,
             osd_vertical: false,
             osd_opacity: 95,
         }

@@ -51,6 +51,8 @@ impl MixerApp {
         let mut open = self.show_settings;
         egui::Window::new("Settings")
             .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_width(400.0)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| self.settings_body(ui));
@@ -58,10 +60,17 @@ impl MixerApp {
     }
 
     fn settings_body(&mut self, ui: &mut Ui) {
+        ui.spacing_mut().item_spacing.y = 6.0;
+
+        section(ui, "General");
         #[cfg(windows)]
         {
             let mut on = self.config.run_at_startup;
-            if ui.checkbox(&mut on, "Start with Windows").changed() {
+            if ui
+                .checkbox(&mut on, "Start with Windows")
+                .on_hover_text("Launches quietly into the tray when you sign in")
+                .changed()
+            {
                 match crate::startup::set_enabled(on) {
                     Ok(()) => {
                         self.config.run_at_startup = on;
@@ -70,40 +79,77 @@ impl MixerApp {
                     Err(e) => self.shell.hk_status = vec![format!("Couldn't change startup: {e}")],
                 }
             }
-            ui.add_space(8.0);
-            ui.label(RichText::new("Global hotkeys").strong());
-            ui.label(
-                RichText::new("Act on the default playback device. Examples: ctrl+alt+up, win+f9")
-                    .size(11.0)
-                    .color(theme::TEXT_DIM),
+        }
+        let mut idle = self.config.show_idle;
+        if ui
+            .checkbox(&mut idle, "Show apps that aren't playing (Mixer view)")
+            .changed()
+        {
+            self.config.show_idle = idle;
+            self.config.save();
+        }
+        let mut routing = self.config.experimental_routing;
+        if ui
+            .checkbox(&mut routing, "Let me send each app to a different output")
+            .changed()
+        {
+            self.config.experimental_routing = routing;
+            self.config.save();
+        }
+        hint(
+            ui,
+            "Experimental. Click the device pill under any app to choose where it plays. Uses an \
+             undocumented Windows interface that may not work on every Windows version.",
+        );
+
+        #[cfg(windows)]
+        {
+            section(ui, "Hotkeys");
+            hint(
+                ui,
+                "They change the default playback device, even when this window is hidden. \
+                 Examples: ctrl+alt+up, win+f9. Leave blank to turn one off.",
             );
-            egui::Grid::new("hotkeys").num_columns(2).show(ui, |ui| {
-                ui.label("Volume up");
-                ui.text_edit_singleline(&mut self.hk_edit.volume_up);
-                ui.end_row();
-                ui.label("Volume down");
-                ui.text_edit_singleline(&mut self.hk_edit.volume_down);
-                ui.end_row();
-                ui.label("Mute");
-                ui.text_edit_singleline(&mut self.hk_edit.mute);
-                ui.end_row();
-            });
+            egui::Grid::new("hotkeys")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Volume up");
+                    ui.text_edit_singleline(&mut self.hk_edit.volume_up);
+                    ui.end_row();
+                    ui.label("Volume down");
+                    ui.text_edit_singleline(&mut self.hk_edit.volume_down);
+                    ui.end_row();
+                    ui.label("Mute");
+                    ui.text_edit_singleline(&mut self.hk_edit.mute);
+                    ui.end_row();
+                });
+            let mut step = self.config.volume_step;
+            if ui
+                .add(egui::Slider::new(&mut step, 1..=20).text("Step per press, %"))
+                .changed()
+            {
+                self.config.volume_step = step;
+                self.config.save();
+            }
             if ui.button("Apply hotkeys").clicked() {
                 self.apply_hotkeys_from_edit();
             }
             for msg in &self.shell.hk_status {
                 ui.label(RichText::new(msg).size(11.0).color(theme::MUTE));
             }
-            ui.add_space(8.0);
 
-            ui.label(RichText::new("On-screen display").strong());
+            section(ui, "On-screen display");
             let (mut osd, mut vertical, mut opacity) = (
                 self.config.osd,
                 self.config.osd_vertical,
                 self.config.osd_opacity,
             );
             let mut changed = ui
-                .checkbox(&mut osd, "Show when a hotkey changes the volume")
+                .checkbox(
+                    &mut osd,
+                    "Show a volume bar when a hotkey changes the volume",
+                )
                 .changed();
             changed |= ui.checkbox(&mut vertical, "Vertical bar").changed();
             changed |= ui
@@ -116,52 +162,40 @@ impl MixerApp {
                 self.config.save();
                 self.sync_osd();
             }
-            ui.add_space(8.0);
         }
 
-        let mut step = self.config.volume_step;
-        if ui
-            .add(egui::Slider::new(&mut step, 1..=20).text("Hotkey step %"))
-            .changed()
-        {
-            self.config.volume_step = step;
-            self.config.save();
+        section(ui, "Presets");
+        if self.config.presets.is_empty() {
+            hint(
+                ui,
+                "A preset remembers every volume and mute. Use the Presets menu at the top to \
+                 save one, then apply it in a click.",
+            );
         }
-
-        ui.add_space(8.0);
-        let mut routing = self.config.experimental_routing;
-        if ui
-            .checkbox(&mut routing, "Per-app output routing (experimental)")
-            .changed()
-        {
-            self.config.experimental_routing = routing;
-            self.config.save();
-        }
-        ui.label(
-            RichText::new(
-                "Adds an Output menu to each app. Uses an undocumented Windows interface that may \
-                 not work on every Windows version.",
-            )
-            .size(11.0)
-            .color(theme::TEXT_DIM),
-        );
-
-        if !self.config.presets.is_empty() {
-            ui.add_space(8.0);
-            ui.label(RichText::new("Presets").strong());
-            let mut delete = None;
-            for (i, p) in self.config.presets.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(&p.name);
+        let mut delete = None;
+        for (i, p) in self.config.presets.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(&p.name);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("Delete").clicked() {
                         delete = Some(i);
                     }
                 });
-            }
-            if let Some(i) = delete {
-                self.config.presets.remove(i);
-                self.config.save();
-            }
+            });
+        }
+        if let Some(i) = delete {
+            self.config.presets.remove(i);
+            self.config.save();
         }
     }
+}
+
+fn section(ui: &mut Ui, title: &str) {
+    ui.add_space(10.0);
+    ui.label(RichText::new(title).size(14.0).strong());
+    ui.separator();
+}
+
+fn hint(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).size(11.5).color(theme::TEXT_DIM));
 }
