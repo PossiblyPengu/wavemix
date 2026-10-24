@@ -317,7 +317,7 @@ impl MixerApp {
         let pro = self.view() == View::Console;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
-            ui.label(RichText::new("wavemix").size(16.0).strong());
+            ui.label(RichText::new("wavemix").size(16.0).strong().color(theme::ACCENT));
             if self.demo && pro {
                 ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM))
                     .on_hover_text("Showing fake devices and apps");
@@ -333,6 +333,8 @@ impl MixerApp {
                 if pro {
                     self.presets_menu(ui, snap);
                 }
+                ui.add_space(4.0);
+                ui.separator();
                 ui.add_space(6.0);
                 // Reads left to right as: Simple | Pro.
                 for (view, label, tip) in [

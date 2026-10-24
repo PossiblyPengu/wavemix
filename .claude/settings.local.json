@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(~/.cargo/bin/cargo build:*)",
+      "Bash(cmd /c \"cargo build 2>&1\")",
+      "Bash(cmd //c \"cargo build\")",
+      "Bash(cmd //c \"C:\\\\\\\\Users\\\\\\\\andre\\\\\\\\.cargo\\\\\\\\bin\\\\\\\\cargo build 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-Command cargo -ErrorAction SilentlyContinue | Select-Object Source\")",
+      "Bash(powershell.exe -Command \"& {Get-ChildItem -Path 'C:\\\\Users\\\\andre' -Recurse -Filter 'cargo.exe' -Depth 5 -ErrorAction SilentlyContinue | Select-Object FullName}\")",
+      "Bash(powershell.exe -Command '& { $paths = @\\('\\\\''C:\\\\Users\\\\andre\\\\.rustup\\\\toolchains'\\\\'', '\\\\''C:\\\\Users\\\\andre\\\\.cargo\\\\bin'\\\\'', '\\\\''C:\\\\Program Files\\\\Rust'\\\\'', '\\\\''E:\\\\Rust'\\\\''\\); foreach\\($p in $paths\\) { if\\(Test-Path $p\\) { Get-ChildItem $p -Filter '\\\\''cargo*'\\\\'' | Select-Object FullName } } }')",
+      "Bash(powershell.exe -Command \"rustc --version; cargo --version\")",
+      "Bash(powershell.exe -Command '& { $env:PATH += '\\\\'';C:\\\\Users\\\\andre\\\\.cargo\\\\bin'\\\\''; cargo run 2>&1 }')",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Users\\\\andre\\\\.cargo\\\\bin\\\\cargo.exe' build 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Users\\\\andre' -Force | Select-Object Name\")"
+    ]
+  }
+}

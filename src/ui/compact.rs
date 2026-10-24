@@ -108,7 +108,7 @@ impl MixerApp {
         egui::Frame::new()
             .fill(theme::PANEL)
             .stroke(egui::Stroke::new(1.0, theme::BORDER))
-            .corner_radius(10)
+            .corner_radius(8)
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());

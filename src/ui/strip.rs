@@ -104,16 +104,18 @@ pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
     let fill = if muted {
         theme::MUTE
     } else if resp.hovered() {
-        Color32::from_rgb(0x38, 0x3d, 0x4a)
+        theme::HOVER
     } else {
         theme::PANEL_HI
     };
-    let fg = if muted {
-        Color32::WHITE
-    } else {
-        theme::TEXT_DIM
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(6), fill);
+    let fg = if muted { Color32::WHITE } else { theme::TEXT_DIM };
+    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+    ui.painter().rect_stroke(
+        rect,
+        CornerRadius::same(4),
+        Stroke::new(1.0, if muted { theme::MUTE } else { theme::BORDER }),
+        StrokeKind::Inside,
+    );
     speaker_icon(ui.painter(), rect.center(), size.y * 0.7, muted, fg);
     resp.on_hover_text(if muted { "Unmute" } else { "Mute" })
 }
@@ -122,15 +124,15 @@ pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
 pub fn chip(ui: &mut Ui, text: &str, width: f32, accent: bool) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 24.0), Sense::click());
     let fill = if resp.hovered() || resp.is_pointer_button_down_on() {
-        Color32::from_rgb(0x38, 0x3d, 0x4a)
+        theme::HOVER
     } else {
         theme::PANEL_HI
     };
     let border = if accent { theme::ACCENT } else { theme::BORDER };
-    ui.painter().rect_filled(rect, CornerRadius::same(12), fill);
+    ui.painter().rect_filled(rect, CornerRadius::same(10), fill);
     ui.painter().rect_stroke(
         rect,
-        CornerRadius::same(12),
+        CornerRadius::same(10),
         Stroke::new(1.0, border),
         StrokeKind::Inside,
     );
@@ -339,11 +341,11 @@ pub fn db_fader(
     );
     let knob = Rect::from_center_size(pos2(track_x, fill_top), vec2(30.0, 17.0));
     let knob_fill = if resp.dragged() {
-        Color32::from_rgb(0x4a, 0x51, 0x62)
+        Color32::from_rgb(0x4e, 0x42, 0x2e)
     } else if resp.hovered() {
-        Color32::from_rgb(0x3c, 0x42, 0x50)
+        Color32::from_rgb(0x3e, 0x34, 0x26)
     } else {
-        Color32::from_rgb(0x30, 0x35, 0x41)
+        Color32::from_rgb(0x30, 0x28, 0x1e)
     };
     painter.rect_filled(knob, CornerRadius::same(4), knob_fill);
     painter.rect_stroke(
@@ -369,16 +371,22 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
     let fill = if on {
         color
     } else if resp.hovered() {
-        Color32::from_rgb(0x38, 0x3d, 0x4a)
+        theme::HOVER
     } else {
         theme::PANEL_HI
     };
     let fg = if on {
-        Color32::from_rgb(0x10, 0x12, 0x16)
+        Color32::from_rgb(0x12, 0x0e, 0x08)
     } else {
         theme::TEXT_DIM
     };
-    ui.painter().rect_filled(rect, CornerRadius::same(5), fill);
+    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+    ui.painter().rect_stroke(
+        rect,
+        CornerRadius::same(4),
+        Stroke::new(1.0, if on { color.linear_multiply(0.7) } else { theme::BORDER }),
+        StrokeKind::Inside,
+    );
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -393,13 +401,22 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
 pub fn led_button(ui: &mut Ui, text: &str, on: bool, selected: bool, size: egui::Vec2) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let fill = if selected {
-        Color32::from_rgb(0x2c, 0x4a, 0x6e)
+        Color32::from_rgb(0x48, 0x38, 0x14)  // warm amber-brown selected state
     } else if resp.hovered() {
-        Color32::from_rgb(0x38, 0x3d, 0x4a)
+        theme::HOVER
     } else {
         theme::PANEL_HI
     };
-    ui.painter().rect_filled(rect, CornerRadius::same(5), fill);
+    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+    ui.painter().rect_stroke(
+        rect,
+        CornerRadius::same(4),
+        Stroke::new(
+            1.0,
+            if selected { theme::ACCENT.linear_multiply(0.6) } else { theme::BORDER },
+        ),
+        StrokeKind::Inside,
+    );
     let led = pos2(rect.left() + 8.0, rect.center().y);
     if on {
         ui.painter().circle_filled(led, 3.0, theme::METER_GREEN);

@@ -55,7 +55,7 @@ fn panel(ui: &mut Ui, title: &str, subtitle: &str, min_h: f32, body: impl FnOnce
     egui::Frame::new()
         .fill(theme::PANEL)
         .stroke(Stroke::new(1.0, theme::BORDER))
-        .corner_radius(10)
+        .corner_radius(8)
         .inner_margin(egui::Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -157,7 +157,7 @@ impl MixerApp {
         egui::Frame::new()
             .fill(theme::PANEL)
             .stroke(Stroke::new(1.0, theme::BORDER))
-            .corner_radius(10)
+            .corner_radius(8)
             .inner_margin(egui::Margin::symmetric(14, 8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -964,7 +964,7 @@ impl MixerApp {
         egui::Frame::new()
             .fill(theme::PANEL)
             .stroke(Stroke::new(1.0, theme::BORDER))
-            .corner_radius(10)
+            .corner_radius(8)
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {

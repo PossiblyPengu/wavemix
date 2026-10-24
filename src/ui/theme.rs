@@ -1,19 +1,25 @@
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(0x14, 0x16, 0x1b);
-pub const PANEL: Color32 = Color32::from_rgb(0x1c, 0x1f, 0x26);
-pub const PANEL_HI: Color32 = Color32::from_rgb(0x25, 0x29, 0x32);
-pub const BORDER: Color32 = Color32::from_rgb(0x2e, 0x33, 0x3e);
-pub const TEXT: Color32 = Color32::from_rgb(0xe4, 0xe7, 0xee);
-pub const TEXT_DIM: Color32 = Color32::from_rgb(0x8b, 0x93, 0xa4);
-pub const ACCENT: Color32 = Color32::from_rgb(0x4c, 0xa8, 0xff);
-pub const ACCENT_OUT: Color32 = Color32::from_rgb(0xf5, 0xa6, 0x23);
-pub const ACCENT_IN: Color32 = Color32::from_rgb(0x5d, 0xd3, 0x9e);
-pub const MUTE: Color32 = Color32::from_rgb(0xe5, 0x48, 0x4d);
-pub const METER_GREEN: Color32 = Color32::from_rgb(0x3d, 0xcc, 0x6e);
-pub const METER_YELLOW: Color32 = Color32::from_rgb(0xf0, 0xc2, 0x2e);
-pub const METER_RED: Color32 = Color32::from_rgb(0xf0, 0x4a, 0x4a);
-pub const METER_BG: Color32 = Color32::from_rgb(0x0d, 0x0f, 0x13);
+// Warm geometry palette — dark warm browns, amber/gold accent, terracotta and leaf green.
+pub const BG: Color32 = Color32::from_rgb(0x17, 0x13, 0x0f);
+pub const PANEL: Color32 = Color32::from_rgb(0x1f, 0x1b, 0x16);
+pub const PANEL_HI: Color32 = Color32::from_rgb(0x29, 0x24, 0x1c);
+pub const BORDER: Color32 = Color32::from_rgb(0x3e, 0x34, 0x28);
+pub const TEXT: Color32 = Color32::from_rgb(0xed, 0xe8, 0xe0);
+pub const TEXT_DIM: Color32 = Color32::from_rgb(0x9c, 0x92, 0x82);
+pub const ACCENT: Color32 = Color32::from_rgb(0xe8, 0xac, 0x38);      // amber gold
+pub const ACCENT_OUT: Color32 = Color32::from_rgb(0xd9, 0x6c, 0x3e);  // terracotta (hardware outs)
+pub const ACCENT_IN: Color32 = Color32::from_rgb(0x78, 0xc2, 0x6c);   // leaf green (virtual/in)
+pub const MUTE: Color32 = Color32::from_rgb(0xd4, 0x46, 0x3a);
+pub const METER_GREEN: Color32 = Color32::from_rgb(0x58, 0xba, 0x5a);
+pub const METER_YELLOW: Color32 = Color32::from_rgb(0xd6, 0xa2, 0x2c);
+pub const METER_RED: Color32 = Color32::from_rgb(0xd6, 0x3e, 0x3a);
+pub const METER_BG: Color32 = Color32::from_rgb(0x0e, 0x0b, 0x07);
+
+/// Warm hover fill for interactive widgets.
+pub const HOVER: Color32 = Color32::from_rgb(0x36, 0x2e, 0x22);
+/// Active/pressed fill.
+pub const ACTIVE: Color32 = Color32::from_rgb(0x44, 0x3a, 0x2c);
 
 pub fn apply(ctx: &egui::Context) {
     let mut v = egui::Visuals::dark();
@@ -24,10 +30,10 @@ pub fn apply(ctx: &egui::Context) {
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
     v.widgets.inactive.bg_fill = PANEL_HI;
     v.widgets.inactive.weak_bg_fill = PANEL_HI;
-    v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0x30, 0x35, 0x41);
-    v.widgets.active.weak_bg_fill = Color32::from_rgb(0x3a, 0x40, 0x4e);
-    v.selection.bg_fill = ACCENT.linear_multiply(0.45);
-    let r = CornerRadius::same(6);
+    v.widgets.hovered.weak_bg_fill = HOVER;
+    v.widgets.active.weak_bg_fill = ACTIVE;
+    v.selection.bg_fill = ACCENT.linear_multiply(0.32);
+    let r = CornerRadius::same(5);
     v.widgets.noninteractive.corner_radius = r;
     v.widgets.inactive.corner_radius = r;
     v.widgets.hovered.corner_radius = r;
