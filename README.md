@@ -73,7 +73,16 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
 Hotkeys that drive bus A1 instead of the Windows volume, macro buttons, a parametric EQ with more
 bands, bus EQ, ASIO/WDM-exclusive devices for lower latency, and recording.
 
+## Install
+
+Run `wavemix-setup-<version>.exe`. It installs just for you (no administrator rights) into
+`%LOCALAPPDATA%\Programs\wavemix`, adds a Start Menu shortcut, and optionally starts wavemix with
+Windows and adds a desktop shortcut. Uninstall from Settings > Apps; it asks whether to keep your
+settings and presets. Upgrading is just running a newer installer over the old one. Windows
+SmartScreen may warn that the installer isn't signed; choose "More info" then "Run anyway".
+
 ## Build
 
     cargo run --release            # Windows
     cargo run -- --demo            # anywhere eframe runs
+    makensis -DVERSION=0.7.0 -DEXE=target\release\wavemix.exe installer\wavemix.nsi   # the installer
