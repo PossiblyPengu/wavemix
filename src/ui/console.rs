@@ -279,28 +279,30 @@ impl MixerApp {
             });
     }
 
-    /// The playback device Windows sends sound to, and the virtual cable that could take its place.
+    /// Whether Windows already plays into the mixer, and the playback device that would do it:
+    /// the other end of the cable that Virtual 1 listens to. Other virtual devices (Voicemeeter's,
+    /// say) don't count, since nothing in wavemix listens to them.
     fn route_state(&self) -> (bool, Option<crate::model::Device>) {
         let snap = self.backend.snapshot();
-        let render = |d: &&crate::model::Device| d.flow == crate::model::Flow::Render;
-        let routed = snap
-            .devices
-            .iter()
-            .filter(render)
-            .any(|d| d.is_default && crate::engine::io::looks_virtual(&d.name));
-        let cable = snap
-            .devices
-            .iter()
-            .filter(render)
-            .filter(|d| crate::engine::io::looks_virtual(&d.name))
-            .find(|d| d.name.to_lowercase().contains("input"))
-            .or_else(|| {
-                snap.devices
-                    .iter()
-                    .filter(render)
-                    .find(|d| crate::engine::io::looks_virtual(&d.name))
-            })
-            .cloned();
+        // Before the mixer has been set up, guess the same cable it will choose.
+        let listening = self.config.engine.io.inputs[HARDWARE_STRIPS].clone().or_else(|| {
+            self.engine
+                .devices()
+                .inputs
+                .iter()
+                .find(|d| d.is_virtual && d.name.contains("CABLE Output"))
+                .map(|d| d.name.clone())
+        });
+        let cable = listening.and_then(|input| {
+            snap.devices
+                .iter()
+                .find(|d| {
+                    d.flow == crate::model::Flow::Render
+                        && crate::engine::io::same_cable(&input, &d.name)
+                })
+                .cloned()
+        });
+        let routed = cable.as_ref().is_some_and(|c| c.is_default);
         (routed, cable)
     }
 
@@ -308,7 +310,18 @@ impl MixerApp {
     /// cable the default playback device), and puts the old device back when switched off.
     fn route_control(&mut self, ui: &mut Ui) {
         let (routed, cable) = self.route_state();
-        let Some(cable) = cable else { return };
+        let Some(cable) = cable else {
+            if self.config.engine.io.inputs[HARDWARE_STRIPS].is_some() {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Can't route: the cable's playback side (CABLE Input) isn't enabled in Windows")
+                        .size(12.0)
+                        .color(theme::METER_YELLOW),
+                )
+                .on_hover_text("Windows sound settings > Playback > right-click > Show disabled devices > enable CABLE Input");
+            }
+            return;
+        };
         let label = if routed { "Windows audio: routed" } else { "Route Windows audio" };
         let tip = if routed {
             "Everything Windows plays goes through wavemix. Click to give Windows its normal speakers back."
@@ -345,7 +358,19 @@ impl MixerApp {
             .filter(|d| !d.is_virtual && !d.is_loopback)
             .collect();
         let (routed, cable) = self.route_state();
-        if hardware.len() < 2 || (cable.is_none() && !routed) {
+        if hardware.len() < 2 {
+            return;
+        }
+        if cable.is_none() {
+            if self.config.engine.io.inputs[HARDWARE_STRIPS].is_some()
+                || devices.inputs.iter().any(|d| d.name.contains("CABLE Output"))
+            {
+                ui.label(
+                    RichText::new("Switching outputs needs CABLE Input enabled in Windows sound settings (Playback > Show disabled devices).")
+                        .size(12.0)
+                        .color(theme::METER_YELLOW),
+                );
+            }
             return;
         }
         let running = self.engine.is_running();
@@ -481,6 +506,7 @@ impl MixerApp {
     pub(super) fn unroute_windows_audio(&mut self) {
         let snap = self.backend.snapshot();
         let render = |d: &&crate::model::Device| d.flow == crate::model::Flow::Render;
+        let had_restore = self.config.restore_playback.is_some();
         let target = self
             .config
             .restore_playback
@@ -493,11 +519,14 @@ impl MixerApp {
                     .find(|d| !crate::engine::io::looks_virtual(&d.name))
                     .map(|d| d.id.clone())
             });
-        let on_cable = snap
-            .devices
-            .iter()
-            .filter(render)
-            .any(|d| d.is_default && crate::engine::io::looks_virtual(&d.name));
+        // Also covers a default we moved to some other virtual device in an earlier version.
+        let on_cable = self.route_state().0
+            || (had_restore
+                && snap
+                    .devices
+                    .iter()
+                    .filter(render)
+                    .any(|d| d.is_default && crate::engine::io::looks_virtual(&d.name)));
         if let (Some(id), true) = (target, on_cable) {
             self.backend.send(crate::model::Command::SetDefaultDevice {
                 id,
