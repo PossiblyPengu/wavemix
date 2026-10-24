@@ -210,9 +210,15 @@ impl MixerApp {
                                 .size(12.0)
                                 .color(theme::METER_YELLOW),
                         )
-                        .on_hover_text(
-                            "Audio glitched. If the count keeps climbing, pick a safer latency.",
-                        );
+                        .on_hover_text(format!(
+                            "Audio glitched. Links buffer a little more after each dropout, so \
+                             it should settle; if the count keeps climbing, pick a safer latency.\n\n\
+                             mixer ran late: {}\ninput underruns: {:?}\noutput underruns: {:?}\noutput overruns: {:?}",
+                            stats.late_blocks,
+                            stats.input_underruns,
+                            stats.output_underruns,
+                            stats.output_overruns,
+                        ));
                     }
                     if running {
                         ui.add_space(8.0);

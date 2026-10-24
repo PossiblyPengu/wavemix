@@ -29,6 +29,10 @@ const KI: f64 = 2.0e-6;
 /// Smoothing of the fill reading, per block (~0.5 s). Device callbacks deliver audio in bursts, so
 /// the raw fill jumps by a whole buffer; reacting to that would modulate the pitch.
 const FILL_SMOOTH: f64 = 0.02;
+/// A device that delivers audio in big or uneven chunks runs the buffer dry at the target fill.
+/// Each such dropout makes the link buffer half as much again, up to this many seconds, so a
+/// stuttering link settles into a steady one instead of glitching for good.
+const MAX_GROWN_LATENCY_S: f64 = 0.15;
 
 pub struct RateReader {
     cons: HeapCons<f32>,
@@ -51,6 +55,8 @@ pub struct RateReader {
     /// A source that sends nothing while it is silent (WASAPI loopback). An empty ring is then
     /// normal, not a dropout.
     tolerant: bool,
+    /// The most latency a link may grow to while recovering from dropouts.
+    max_target: f64,
     pub underruns: u64,
     scratch: [f32; 2],
 }
@@ -71,6 +77,7 @@ impl RateReader {
             #[cfg(test)]
             adaptive: true,
             tolerant: false,
+            max_target: (in_rate * MAX_GROWN_LATENCY_S).max(target_frames as f64),
             underruns: 0,
             scratch: [0.0; 2],
         }
@@ -100,8 +107,9 @@ impl RateReader {
             [self.scratch[0], self.scratch[1]]
         } else {
             // Ran dry: hold the last sample rather than clicking to zero, and re-buffer.
-            if !self.tolerant {
+            if !self.tolerant && self.primed {
                 self.underruns += 1;
+                self.target = (self.target * 1.5).min(self.max_target);
             }
             self.primed = false;
             self.hist[3]
@@ -249,6 +257,29 @@ mod tests {
             }
         }
         (reader, out, lo, hi)
+    }
+
+    #[test]
+    fn a_bursty_device_makes_the_buffer_grow_until_it_stops_dropping_out() {
+        // The writer delivers 40 ms in one go every 40 ms, far lumpier than a 10 ms target allows.
+        let (mut prod, cons) = ring(32_768);
+        let mut reader = RateReader::new(cons, 48_000.0, 48_000.0, 480);
+        let mut buf = vec![0.0f32; 960];
+        let burst = vec![0.1f32; 1920 * 2];
+        let mut late = 0;
+        for b in 0..3000 {
+            if b % 4 == 0 {
+                write_frames(&mut prod, &burst);
+            }
+            let before = reader.underruns;
+            reader.read(&mut buf);
+            if b >= 2000 && reader.underruns > before {
+                late += 1;
+            }
+        }
+        assert!(reader.underruns > 0, "the test should start out glitching");
+        assert_eq!(late, 0, "still dropping out after settling");
+        assert!(reader.target > 1920.0);
     }
 
     #[test]

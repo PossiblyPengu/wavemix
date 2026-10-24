@@ -247,6 +247,20 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
     unsafe {
         // Without this Windows rounds sleeps up to ~15 ms and a 10 ms block clock can't hold.
         windows_sys::Win32::Media::timeBeginPeriod(1);
+        // Ask Windows to schedule this like a pro audio app. Otherwise a game hogging the CPU
+        // makes the 10 ms block clock miss its beat, and every miss is an audible glitch.
+        let task: Vec<u16> = "Pro Audio\0".encode_utf16().collect();
+        let mut index = 0u32;
+        let h = windows_sys::Win32::System::Threading::AvSetMmThreadCharacteristicsW(
+            task.as_ptr(),
+            &mut index,
+        );
+        if h.is_null() {
+            windows_sys::Win32::System::Threading::SetThreadPriority(
+                windows_sys::Win32::System::Threading::GetCurrentThread(),
+                windows_sys::Win32::System::Threading::THREAD_PRIORITY_TIME_CRITICAL,
+            );
+        }
     }
     let mut mixer = Mixer::new(ENGINE_RATE as f32);
     let mut feeds: [Option<RateReader>; STRIPS] = std::array::from_fn(|_| None);
