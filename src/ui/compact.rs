@@ -134,7 +134,7 @@ impl MixerApp {
                             for d in outputs {
                                 let label = format!(
                                     "{}{}",
-                                    match self.config.device_alias(&d.name) {
+                                    match self.config.device_alias(&d.id) {
                                         Some(alias) => format!("{alias}  ({})", d.name),
                                         None => d.name.clone(),
                                     },

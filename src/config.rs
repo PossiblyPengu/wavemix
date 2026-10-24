@@ -107,7 +107,8 @@ pub struct Config {
     pub osd_accent_system: bool,
     /// Hide Windows' own volume popup whenever the wavemix bar is shown.
     pub hide_windows_osd: bool,
-    /// Names you gave devices, keyed by the name Windows gives them.
+    /// Names you gave devices, keyed by Windows' stable device id (so twins and driver renames
+    /// don't mix them up).
     pub device_names: BTreeMap<String, String>,
     /// Names you gave mixer strips and buses; an empty entry means the default ("Input 1", "A1").
     pub strip_names: Vec<String>,
@@ -221,9 +222,9 @@ mod tests {
 
 impl Config {
     /// What to call a device: the name you gave it, if any.
-    pub fn device_alias(&self, windows_name: &str) -> Option<&str> {
+    pub fn device_alias(&self, device_id: &str) -> Option<&str> {
         self.device_names
-            .get(windows_name)
+            .get(device_id)
             .map(String::as_str)
             .filter(|n| !n.trim().is_empty())
     }
@@ -258,8 +259,8 @@ mod name_tests {
         assert_eq!(c.strip_title(1), "Input 2");
         assert_eq!(c.bus_title(0), "Desk");
         assert_eq!(c.bus_title(1), "A2");
-        c.device_names.insert("Speakers (Logi Z407)".into(), "Desk speakers".into());
-        assert_eq!(c.device_alias("Speakers (Logi Z407)"), Some("Desk speakers"));
+        c.device_names.insert("{0.0.0}.{abc}".into(), "Desk speakers".into());
+        assert_eq!(c.device_alias("{0.0.0}.{abc}"), Some("Desk speakers"));
         assert_eq!(c.device_alias("Other"), None);
     }
 }

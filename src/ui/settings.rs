@@ -250,16 +250,14 @@ impl MixerApp {
         );
         {
             let snap = self.backend.snapshot();
-            let mut seen = std::collections::BTreeSet::new();
-            let mut names: Vec<String> = Vec::new();
-            for d in &snap.devices {
-                if seen.insert(d.name.clone()) {
-                    names.push(d.name.clone());
-                }
-            }
+            let all: Vec<(String, String)> = snap
+                .devices
+                .iter()
+                .map(|d| (d.id.clone(), d.name.clone()))
+                .collect();
             let mut changed = false;
-            for name in names {
-                let mut text = self.config.device_names.get(&name).cloned().unwrap_or_default();
+            for (id, name) in all {
+                let mut text = self.config.device_names.get(&id).cloned().unwrap_or_default();
                 ui.vertical(|ui| {
                     let hint_text = strip::short_device_name(&name).to_string();
                     let edit = ui.add(
@@ -275,15 +273,16 @@ impl MixerApp {
                 });
                 if changed {
                     if text.trim().is_empty() {
-                        self.config.device_names.remove(&name);
+                        self.config.device_names.remove(&id);
                     } else {
-                        self.config.device_names.insert(name, text);
+                        self.config.device_names.insert(id, text);
                     }
                     break;
                 }
             }
             if changed {
                 self.config.save();
+                self.sync_osd_names();
             }
         }
 

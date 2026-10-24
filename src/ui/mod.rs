@@ -45,6 +45,8 @@ pub struct MixerApp {
     engine_dirty_at: Option<std::time::Instant>,
     /// Startup check for a left-over cable default has run.
     route_checked: bool,
+    /// Names saved under Windows device names have been moved to device ids.
+    names_migrated: bool,
     /// Auto-route has already happened for this engine run.
     auto_routed: bool,
     config: Config,
@@ -131,6 +133,7 @@ impl MixerApp {
                 }),
             engine_dirty_at: None,
             route_checked: false,
+            names_migrated: false,
             auto_routed: false,
             config,
             demo,
@@ -263,10 +266,54 @@ impl MixerApp {
     /// A device's name for display: yours if you gave it one, else Windows' name made short (and
     /// kept distinct from similar devices in `all`).
     fn device_label<'a>(&self, name: &str, all: impl IntoIterator<Item = &'a str>) -> String {
-        match self.config.device_alias(name) {
+        match self.alias_for_name(name) {
             Some(alias) => alias.to_string(),
             None => strip::label_among(name, all),
         }
+    }
+
+    /// The name you gave the device Windows calls `name`. The engine only knows devices by name,
+    /// so this finds the matching device (and its id) in Windows' own list.
+    fn alias_for_name(&self, name: &str) -> Option<String> {
+        let snap = self.backend.snapshot();
+        snap.devices
+            .iter()
+            .find(|d| d.name == name)
+            .and_then(|d| self.config.device_alias(&d.id))
+            .map(str::to_string)
+    }
+
+    /// Tell the volume bar about changed names (Windows only).
+    fn sync_osd_names(&self) {
+        #[cfg(windows)]
+        self.sync_osd();
+    }
+
+    /// Re-key names saved by older versions (which used the Windows name) to device ids.
+    pub(super) fn migrate_device_names(&mut self) {
+        let snap = self.backend.snapshot();
+        if snap.devices.is_empty() {
+            return;
+        }
+        let old: Vec<(String, String)> = self
+            .config
+            .device_names
+            .iter()
+            .filter(|(k, _)| !snap.devices.iter().any(|d| &d.id == *k))
+            .filter(|(k, _)| snap.devices.iter().any(|d| &d.name == *k))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        if old.is_empty() {
+            return;
+        }
+        for (name, text) in old {
+            self.config.device_names.remove(&name);
+            for d in snap.devices.iter().filter(|d| d.name == name) {
+                self.config.device_names.insert(d.id.clone(), text.clone());
+            }
+        }
+        self.config.save();
+        self.sync_osd_names();
     }
 
     /// A strip's or bus's title. Double-click to type a new name; Enter or clicking away keeps it,
@@ -359,7 +406,7 @@ impl MixerApp {
             for d in snap.devices.iter().filter(|d| d.flow == Flow::Render) {
                 let label = format!(
                     "{}{}",
-                    match self.config.device_alias(&d.name) {
+                    match self.config.device_alias(&d.id) {
                         Some(alias) => format!("{alias}  ({})", d.name),
                         None => d.name.clone(),
                     },

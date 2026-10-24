@@ -138,6 +138,11 @@ pub fn osd_settings(config: &Config) -> OsdSettings {
         accent_system: config.osd_accent_system,
         volume_step: config.volume_step,
         hide_windows_popup: config.hide_windows_osd,
+        device_names: config
+            .device_names
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
     }
 }
 

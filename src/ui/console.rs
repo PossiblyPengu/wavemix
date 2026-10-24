@@ -496,6 +496,10 @@ impl MixerApp {
         if self.backend.snapshot().devices.is_empty() {
             return;
         }
+        if !self.names_migrated {
+            self.names_migrated = true;
+            self.migrate_device_names();
+        }
         let running = self.engine.is_running();
         if !self.route_checked {
             self.route_checked = true;
@@ -686,7 +690,7 @@ impl MixerApp {
                 for d in group {
                     let label = format!(
                         "{}{}",
-                        match self.config.device_alias(&d.name) {
+                        match self.alias_for_name(&d.name) {
                             Some(alias) => format!("{alias}  ({})", d.name),
                             None => d.name.clone(),
                         },

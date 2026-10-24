@@ -78,6 +78,8 @@ pub struct OsdSettings {
     pub volume_step: u32,
     /// Hide Windows' own volume popup while ours is up.
     pub hide_windows_popup: bool,
+    /// Names you gave devices, by device id.
+    pub device_names: HashMap<String, String>,
 }
 
 /// What the display asks of the app.
@@ -382,7 +384,7 @@ impl State {
         self.pop = 0.0;
         self.alpha = 0.0;
         self.last_frame = Instant::now();
-        if let Some(f) = read_frame(backend, &self.shown) {
+        if let Some(f) = read_frame(backend, &self.shown, &cfg.device_names) {
             self.display_pct = f.percent as f32;
         }
         SetTimer(self.hwnd, TIMER_ANIM, FRAME_MS, None);
@@ -436,7 +438,7 @@ impl State {
         }
 
         // Meter: snap up, fall back slowly, as a VU meter should; peak marker falls slower.
-        let (level, target) = match read_frame(backend, &self.shown) {
+        let (level, target) = match read_frame(backend, &self.shown, &cfg.device_names) {
             Some(f) => (f.meter, f.percent as f32),
             None => (0.0, self.display_pct),
         };
@@ -474,7 +476,7 @@ impl State {
             self.rebuild_surface(cfg, tail);
         }
         let Some(surface) = &self.surface else { return };
-        let Some(mut frame) = read_frame(backend, &self.shown) else {
+        let Some(mut frame) = read_frame(backend, &self.shown, &cfg.device_names) else {
             return;
         };
         frame.meter = self.meter;
@@ -689,7 +691,11 @@ impl State {
 }
 
 /// The device the OSD shows: the one that changed, or the default.
-fn read_frame(backend: &Handle, shown: &Option<String>) -> Option<Frame> {
+fn read_frame(
+    backend: &Handle,
+    shown: &Option<String>,
+    names: &HashMap<String, String>,
+) -> Option<Frame> {
     let snap = backend.snapshot();
     let d = snap
         .devices
@@ -705,7 +711,10 @@ fn read_frame(backend: &Handle, shown: &Option<String>) -> Option<Frame> {
                 .find(|d| d.flow == Flow::Render && d.is_default)
         })?;
     let peak_db = amp_to_db(d.peak);
-    let label = d.name.split(" (").next().unwrap_or(&d.name).to_string();
+    let label = match names.get(&d.id).map(|n| n.trim()).filter(|n| !n.is_empty()) {
+        Some(own) => own.to_string(),
+        None => d.name.split(" (").next().unwrap_or(&d.name).to_string(),
+    };
     Some(Frame {
         label,
         percent: crate::model::percent(d.volume),
