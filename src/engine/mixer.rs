@@ -55,6 +55,51 @@ struct StripDsp {
 struct BusDsp {
     limiter: Limiter,
     gain: f32,
+    delay: DelayLine,
+}
+
+/// Longest bus delay the mixer supports.
+pub const MAX_BUS_DELAY_MS: f32 = 500.0;
+
+/// Fixed-length delay for interleaved stereo. Allocated once, so the audio thread never allocates.
+struct DelayLine {
+    buf: Vec<f32>,
+    pos: usize,
+    rate: f32,
+}
+
+impl DelayLine {
+    fn new(rate: f32) -> Self {
+        let frames = (rate * MAX_BUS_DELAY_MS / 1000.0) as usize + 1;
+        Self {
+            buf: vec![0.0; frames * 2],
+            pos: 0,
+            rate,
+        }
+    }
+
+    fn process(&mut self, ms: f32, block: &mut [f32]) {
+        let frames = self.buf.len() / 2;
+        let delay = ((ms.clamp(0.0, MAX_BUS_DELAY_MS) * self.rate / 1000.0) as usize).min(frames - 1);
+        if delay == 0 {
+            // Keep the history current so turning a delay on doesn't replay stale audio.
+            for pair in block.chunks_exact(2) {
+                self.buf[self.pos * 2] = pair[0];
+                self.buf[self.pos * 2 + 1] = pair[1];
+                self.pos = (self.pos + 1) % frames;
+            }
+            return;
+        }
+        for pair in block.chunks_exact_mut(2) {
+            let read = (self.pos + frames - delay) % frames;
+            let (l, r) = (self.buf[read * 2], self.buf[read * 2 + 1]);
+            self.buf[self.pos * 2] = pair[0];
+            self.buf[self.pos * 2 + 1] = pair[1];
+            pair[0] = l;
+            pair[1] = r;
+            self.pos = (self.pos + 1) % frames;
+        }
+    }
 }
 
 pub struct Mixer {
@@ -77,6 +122,7 @@ impl Mixer {
                 .map(|_| BusDsp {
                     limiter: Limiter::new(sample_rate),
                     gain: 0.0,
+                    delay: DelayLine::new(sample_rate),
                 })
                 .collect(),
         }
@@ -134,6 +180,7 @@ impl Mixer {
             if p.limiter {
                 dsp.limiter.process(p.limiter_ceiling_db, buf);
             }
+            dsp.delay.process(p.delay_ms, buf);
             let peaks = peak_of(buf);
             store(&levels.buses[b][0], peaks[0]);
             store(&levels.buses[b][1], peaks[1]);
@@ -213,6 +260,30 @@ mod tests {
         let (mut ins, mut outs2) = blocks(value);
         mixer.process(params, &mut ins, &mut outs2, &levels);
         (outs2, levels)
+    }
+
+    #[test]
+    fn a_bus_delay_shifts_audio_by_that_many_frames() {
+        let mut d = DelayLine::new(48_000.0);
+        let mut block = vec![0.0f32; 960];
+        block[0] = 1.0; // left channel, frame 0
+        block[1] = 0.5; // right channel, frame 0
+        d.process(1.0, &mut block); // 1 ms = 48 frames
+        assert_eq!(block[96], 1.0);
+        assert_eq!(block[97], 0.5);
+        assert_eq!(block.iter().filter(|v| **v != 0.0).count(), 2);
+    }
+
+    #[test]
+    fn a_bus_delay_carries_over_between_blocks() {
+        let mut d = DelayLine::new(48_000.0);
+        let mut first = vec![0.0f32; 960];
+        first[958] = 1.0; // last frame of the block
+        d.process(1.0, &mut first);
+        assert!(first.iter().all(|v| *v == 0.0));
+        let mut second = vec![0.0f32; 960];
+        d.process(1.0, &mut second);
+        assert_eq!(second[958 + 96 - 960], 1.0);
     }
 
     #[test]

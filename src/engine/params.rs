@@ -138,6 +138,9 @@ pub struct BusParams {
     /// Brick-wall limiter at the end of the bus.
     pub limiter: bool,
     pub limiter_ceiling_db: f32,
+    /// Delay applied to the whole bus, in milliseconds, to line up outputs whose devices have
+    /// different latencies (Bluetooth headphones against wired speakers).
+    pub delay_ms: f32,
 }
 
 impl Default for BusParams {
@@ -147,6 +150,7 @@ impl Default for BusParams {
             mute: false,
             limiter: true,
             limiter_ceiling_db: -0.5,
+            delay_ms: 0.0,
         }
     }
 }

@@ -804,6 +804,18 @@ impl MixerApp {
                     p.limiter = !p.limiter;
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Delay").size(11.0).color(theme::TEXT_DIM));
+                ui.add(
+                    egui::DragValue::new(&mut p.delay_ms)
+                        .range(0.0..=crate::engine::mixer::MAX_BUS_DELAY_MS)
+                        .speed(1.0)
+                        .suffix(" ms"),
+                )
+                .on_hover_text(
+                    "Hold this output back so it lines up with a slower one, for example wired speakers waiting for Bluetooth headphones",
+                );
+            });
         });
     }
 
