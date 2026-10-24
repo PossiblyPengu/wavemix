@@ -111,6 +111,7 @@ impl MixerApp {
         let panel_h = STRIP_CHROME_H + fader_h;
 
         egui::ScrollArea::both()
+            .id_salt("pro-console")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.horizontal_top(|ui| {
@@ -211,6 +212,24 @@ impl MixerApp {
                         );
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        // Show or hide the per-app list beside the console, growing or shrinking
+                        // the window by its width so the console keeps its room.
+                        let on = self.config.pro_apps_panel;
+                        if strip::toggle(ui, "Apps panel", on, vec2(84.0, 26.0), theme::ACCENT)
+                            .on_hover_text("List running apps beside the mixer, to send them into virtual cables")
+                            .clicked()
+                        {
+                            self.config.pro_apps_panel = !on;
+                            let grow = super::SIDE_PANEL_W + super::SIDE_PANEL_GAP;
+                            let width = ui.ctx().input(|i| i.viewport().inner_rect.map(|r| r.width()));
+                            if let Some(w) = width {
+                                let w = if on { (w - grow).max(900.0) } else { w + grow };
+                                let h = ui.ctx().input(|i| i.viewport().inner_rect.map(|r| r.height())).unwrap_or(840.0);
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(w, h)));
+                            }
+                            self.mark_engine_dirty();
+                        }
+                        ui.add_space(8.0);
                         let current = LATENCY_CHOICES
                             .iter()
                             .find(|(_, ms)| *ms == self.config.engine.latency_ms)
@@ -321,6 +340,9 @@ impl MixerApp {
         self.engine.set_output(0, speakers);
         self.engine.set_output(3, cable_in);
         self.config.engine.configured = true;
+        // Opening Pro for the first time is what starts the engine.
+        self.config.engine.io.engine_on = true;
+        self.engine.set_running(true);
         self.mark_engine_dirty();
     }
 

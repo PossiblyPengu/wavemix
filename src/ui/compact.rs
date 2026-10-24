@@ -42,13 +42,27 @@ impl MixerApp {
 
         self.device_card(ui, &outputs, &dev);
         ui.add_space(12.0);
+        self.app_list(ui, snap, false);
+    }
 
+    /// Every app that makes sound, each with its own slider; apps that are silent are folded away.
+    /// `always_pills` shows the output pill on every row (Pro mode's side panel, where sending an
+    /// app to a cable is the point); otherwise it only appears when it has something to say.
+    pub(super) fn app_list(&mut self, ui: &mut Ui, snap: &Snapshot, always_pills: bool) {
+        let default_id = snap
+            .devices
+            .iter()
+            .find(|d| d.flow == Flow::Render && d.is_default)
+            .map(|d| d.id.clone());
+        let routing_on = self.config.experimental_routing;
+        let routed = |app: &AppStrip| routing_on || Some(&app.device_id) != default_id.as_ref();
         let (playing, idle): (Vec<AppStrip>, Vec<AppStrip>) = self
             .all_apps(snap, true)
             .into_iter()
             .partition(|a| a.active);
 
         egui::ScrollArea::vertical()
+            .id_salt("app-list")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if playing.is_empty() {
@@ -62,7 +76,7 @@ impl MixerApp {
                     ui.add_space(8.0);
                 }
                 for app in &playing {
-                    self.app_row(ui, snap, app);
+                    self.app_row(ui, snap, app, always_pills || routed(app));
                     ui.add_space(6.0);
                 }
                 if !idle.is_empty() {
@@ -74,7 +88,7 @@ impl MixerApp {
                     .default_open(false)
                     .show(ui, |ui| {
                         for app in &idle {
-                            self.app_row(ui, snap, app);
+                            self.app_row(ui, snap, app, always_pills || routed(app));
                             ui.add_space(6.0);
                         }
                     });
@@ -153,7 +167,7 @@ impl MixerApp {
             });
     }
 
-    fn app_row(&mut self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip) {
+    fn app_row(&mut self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip, pill: bool) {
         let icon: Option<TextureHandle> = self.icon(ui.ctx(), &app.key, &app.icon);
         egui::Frame::new()
             .fill(theme::PANEL)
@@ -172,12 +186,15 @@ impl MixerApp {
                     } else {
                         theme::TEXT_DIM
                     };
-                    let name = strip::truncate(ui, &app.name, ui.available_width() - 150.0, 13.0);
+                    let reserve = if pill { 150.0 } else { 20.0 };
+                    let name = strip::truncate(ui, &app.name, ui.available_width() - reserve, 13.0);
                     ui.label(RichText::new(name).size(13.0).color(color))
                         .on_hover_text(&app.name);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        self.device_chip(ui, snap, app, 116.0);
-                    });
+                    if pill {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            self.device_chip(ui, snap, app, 116.0);
+                        });
+                    }
                 });
                 ui.add_space(2.0);
                 let change = self.slider_row(

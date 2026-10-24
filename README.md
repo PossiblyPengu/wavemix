@@ -8,10 +8,18 @@ WASAPI sessions), so it needs no driver.
 end-to-end-tested against simulated devices. The Windows device I/O, tray, hotkeys and app routing
 are only exercised by running it on Windows.
 
-## How it works
+## Two modes
 
-wavemix is a software audio mixer in the Voicemeeter Banana mould, with an EarTrumpet-style app
-list alongside it.
+* **Simple** (the default): a small volume control in the spirit of EarTrumpet. The output you're
+  listening on, then a slider for every app that's making sound. It's also what the tray icon
+  opens. The mixing engine stays off.
+* **Pro**: a software mixer in the Voicemeeter Banana mould, described below. Opening it for the
+  first time picks sensible devices and starts the engine. An optional **Apps panel** beside the
+  console sends programs into virtual cables.
+
+Switch with **Simple | Pro** at the top; the window resizes to fit.
+
+## How Pro mode works
 
     mic / line-in ─┐                        ┌─> A1  speakers
     mic / line-in ─┤                        ├─> A2  headphones
@@ -21,7 +29,7 @@ list alongside it.
 
 * **Inputs** are five strips: three hardware (microphones, line-in) and two virtual.
 * **Virtual inputs** are virtual audio cables such as [VB-Cable](https://vb-audio.com/Cable/)
-  (free). Use the **Apps** view to send any program to the cable's playback end; the mixer picks it
+  (free). Use Pro's **Apps panel** (or the output pill in Simple mode) to send any program to the cable's playback end; the mixer picks it
   up from the recording end and treats it like any other input. Nothing else needs a driver.
 * **Buses** A1-A3 play to hardware, B1-B2 to virtual cables, so the mix can be heard in the room
   and fed into chat or streaming software at once. Each bus has a gain, mute and a limiter.
@@ -33,13 +41,13 @@ list alongside it.
 
 ## Features
 
-- **Mixer view**: the console described above, with stereo peak meters on the same dB scale as the
+- **Pro console**: the mixer described above, with stereo peak meters on the same dB scale as the
   faders, magnetic unity (0 dB) on the faders, and status dots showing whether each device is
   running. A first-run setup picks your default microphone and speakers (and a cable if one is
   installed) so it works without any configuration.
 - **Feedback guard**: a strip that listens to a cable can't safely feed the bus playing into the
   same cable; the send button turns red and says why.
-- **Apps view** (also the tray flyout): per-app volume and mute with a live level, app icons and
+- **Simple mode** (also the tray flyout, and Pro's Apps panel): per-app volume and mute with a live level, app icons and
   friendly names, and a pill showing which output each app plays through. Click the pill to move
   the app to another device, including a virtual cable (experimental; uses an undocumented
   Windows interface laid out for Windows 10 21H2 / Windows 11).

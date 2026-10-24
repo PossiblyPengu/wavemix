@@ -182,7 +182,7 @@ impl MixerApp {
 
     pub(super) fn show_window(&mut self, ctx: &egui::Context) {
         self.mode = Mode::Window;
-        let [w, h] = Self::initial_size(self.config.view);
+        let [w, h] = Self::size_for(&self.config);
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::Normal,

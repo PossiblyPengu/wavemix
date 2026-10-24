@@ -8,12 +8,16 @@ use serde::{Deserialize, Serialize};
 use crate::engine::params::{EngineParams, IoConfig};
 use crate::preset::Preset;
 
+/// The two modes of the app. The names in the file stay `compact` and `console` so saved settings
+/// keep working.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum View {
+    /// Simple mode: a small EarTrumpet-style volume control.
     #[default]
-    Console,
     Compact,
+    /// Pro mode: the full mixing console.
+    Console,
 }
 
 /// Global hotkeys, as strings like `ctrl+alt+up`. Empty means unbound.
@@ -50,10 +54,9 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            io: IoConfig {
-                engine_on: true,
-                ..IoConfig::default()
-            },
+            // Off until the user first opens Pro mode, so a casual user's microphone isn't
+            // opened for no reason.
+            io: IoConfig::default(),
             params: EngineParams::default(),
             latency_ms: crate::engine::runtime::DEFAULT_LATENCY_MS,
             configured: false,
@@ -66,6 +69,8 @@ impl Default for EngineConfig {
 pub struct Config {
     pub engine: EngineConfig,
     pub view: View,
+    /// Pro mode: show the per-app list beside the console.
+    pub pro_apps_panel: bool,
     pub run_at_startup: bool,
     pub hotkeys: Hotkeys,
     /// Hotkey volume step, in percentage points.
@@ -85,6 +90,7 @@ impl Default for Config {
         Self {
             engine: EngineConfig::default(),
             view: View::default(),
+            pro_apps_panel: false,
             run_at_startup: false,
             hotkeys: Hotkeys::default(),
             volume_step: 5,
@@ -135,9 +141,15 @@ mod tests {
     #[test]
     fn unknown_and_missing_fields_use_defaults() {
         let c: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(c.view, View::Console);
+        assert_eq!(c.view, View::Compact, "Simple mode is the default");
+        assert!(
+            !c.engine.io.engine_on,
+            "engine stays off until Pro is opened"
+        );
         let c: Config = serde_json::from_str(r#"{"view":"compact","future":1}"#).unwrap();
         assert_eq!(c.view, View::Compact);
+        let c: Config = serde_json::from_str(r#"{"view":"console"}"#).unwrap();
+        assert_eq!(c.view, View::Console);
         assert_eq!(c.volume_step, 5);
         assert_eq!(c.hotkeys.mute, "ctrl+alt+m");
         assert!(c.osd);

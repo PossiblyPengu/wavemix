@@ -157,13 +157,13 @@ impl MixerApp {
         }
 
         section(ui, "Presets");
-        if self.config.presets.is_empty() {
-            hint(
-                ui,
-                "A preset remembers every volume and mute. Use the Presets menu at the top to \
-                 save one, then apply it in a click.",
-            );
-        }
+        hint(
+            ui,
+            "A preset remembers every app and device volume and mute, so you can switch between, say, \
+             a gaming and a calling setup in one click.",
+        );
+        let snap = self.backend.snapshot();
+        let mut apply = None;
         let mut delete = None;
         for (i, p) in self.config.presets.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -172,13 +172,41 @@ impl MixerApp {
                     if ui.small_button("Delete").clicked() {
                         delete = Some(i);
                     }
+                    if ui.small_button("Apply").clicked() {
+                        apply = Some(i);
+                    }
                 });
             });
+        }
+        if let Some(i) = apply {
+            for c in preset::commands(&self.config.presets[i], &snap) {
+                self.backend.send(c);
+            }
         }
         if let Some(i) = delete {
             self.config.presets.remove(i);
             self.config.save();
         }
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.preset_name)
+                    .hint_text("Name this setup")
+                    .desired_width(180.0),
+            );
+            let name = self.preset_name.trim().to_string();
+            if ui
+                .add_enabled(!name.is_empty(), egui::Button::new("Save current"))
+                .clicked()
+            {
+                let p = preset::capture(&name, &snap);
+                match self.config.presets.iter_mut().find(|e| e.name == name) {
+                    Some(existing) => *existing = p,
+                    None => self.config.presets.push(p),
+                }
+                self.config.save();
+                self.preset_name.clear();
+            }
+        });
     }
 }
 

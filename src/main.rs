@@ -72,7 +72,7 @@ fn main() -> eframe::Result {
     // Launched at login: start hidden in the tray.
     let background = cfg!(windows) && std::env::args().any(|a| a == "--background");
 
-    let [w, h] = MixerApp::initial_size(config.view);
+    let [w, h] = MixerApp::size_for(&config);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("wavemix")

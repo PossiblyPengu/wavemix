@@ -22,8 +22,13 @@ mod theme;
 
 use strip::StripOutput;
 
-const CONSOLE_SIZE: [f32; 2] = [1360.0, 840.0];
-const COMPACT_SIZE: [f32; 2] = [390.0, 660.0];
+/// Pro mode: the full console.
+const PRO_SIZE: [f32; 2] = [1360.0, 840.0];
+/// Simple mode: a small volume control.
+const SIMPLE_SIZE: [f32; 2] = [370.0, 560.0];
+/// Width of the per-app panel beside the Pro console, and the gap before it.
+const SIDE_PANEL_W: f32 = 380.0;
+const SIDE_PANEL_GAP: f32 = 12.0;
 
 pub struct MixerApp {
     backend: Handle,
@@ -105,10 +110,14 @@ impl MixerApp {
         app
     }
 
-    pub fn initial_size(view: View) -> [f32; 2] {
-        match view {
-            View::Console => CONSOLE_SIZE,
-            View::Compact => COMPACT_SIZE,
+    /// Window size for the current mode (Pro grows to make room for its Apps panel).
+    pub fn size_for(config: &Config) -> [f32; 2] {
+        match config.view {
+            View::Console if config.pro_apps_panel => {
+                [PRO_SIZE[0] + SIDE_PANEL_W + SIDE_PANEL_GAP, PRO_SIZE[1]]
+            }
+            View::Console => PRO_SIZE,
+            View::Compact => SIMPLE_SIZE,
         }
     }
 
@@ -124,7 +133,7 @@ impl MixerApp {
         if self.config.view != view {
             self.config.view = view;
             self.config.save();
-            let [w, h] = Self::initial_size(view);
+            let [w, h] = Self::size_for(&self.config);
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(w, h)));
         }
     }
@@ -254,17 +263,18 @@ impl MixerApp {
     // --- chrome --------------------------------------------------------------------------------
 
     fn top_bar(&mut self, ui: &mut Ui, snap: &Snapshot) {
+        let pro = self.view() == View::Console;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             ui.label(RichText::new("wavemix").size(16.0).strong());
-            if self.demo && self.view() == View::Console {
+            if self.demo && pro {
                 ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM))
                     .on_hover_text("Showing fake devices and apps");
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let ctx = ui.ctx().clone();
                 if self.mode == Mode::Flyout {
-                    if ui.button("Open full mixer").clicked() {
+                    if ui.button("Open wavemix").clicked() {
                         #[cfg(windows)]
                         self.show_window(&ctx);
                     }
@@ -276,19 +286,21 @@ impl MixerApp {
                 {
                     self.show_settings = !self.show_settings;
                 }
-                self.presets_menu(ui, snap);
+                if pro {
+                    self.presets_menu(ui, snap);
+                }
                 ui.add_space(6.0);
-                // View switch: reads left-to-right as Mixer | Compact.
+                // Reads left to right as: Simple | Pro.
                 for (view, label, tip) in [
                     (
-                        View::Compact,
-                        "Apps",
-                        "Per-app volume and output, like the Windows volume popup",
+                        View::Console,
+                        "Pro",
+                        "Mixing console: inputs, buses, EQ, gate and compressor",
                     ),
                     (
-                        View::Console,
-                        "Mixer",
-                        "The mixing console: inputs, buses, EQ and dynamics",
+                        View::Compact,
+                        "Simple",
+                        "A small volume control, like the Windows volume popup",
                     ),
                 ] {
                     let selected = self.config.view == view;
@@ -302,6 +314,25 @@ impl MixerApp {
                 }
             });
         });
+    }
+
+    /// Pro mode's per-app list: send a program to a cable here to bring it into the mixer.
+    fn apps_side_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
+        ui.label(
+            RichText::new("APPS")
+                .size(11.0)
+                .strong()
+                .color(theme::TEXT_DIM),
+        );
+        ui.label(
+            RichText::new(
+                "Use an app's pill to play it through a virtual cable; that cable's input strip then carries it.",
+            )
+            .size(11.0)
+            .color(theme::TEXT_DIM),
+        );
+        ui.add_space(6.0);
+        self.app_list(ui, snap, true);
     }
 }
 
@@ -323,6 +354,20 @@ impl eframe::App for MixerApp {
                 self.top_bar(ui, &snap);
                 ui.add_space(8.0);
                 match self.view() {
+                    View::Console if self.config.pro_apps_panel => {
+                        let avail = ui.available_size();
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = SIDE_PANEL_GAP;
+                            let main = vec2(avail.x - SIDE_PANEL_W - SIDE_PANEL_GAP, avail.y);
+                            ui.allocate_ui_with_layout(main, Layout::top_down(Align::Min), |ui| {
+                                self.console(ui)
+                            });
+                            let side = vec2(SIDE_PANEL_W, avail.y);
+                            ui.allocate_ui_with_layout(side, Layout::top_down(Align::Min), |ui| {
+                                self.apps_side_panel(ui, &snap)
+                            });
+                        });
+                    }
                     View::Console => self.console(ui),
                     View::Compact => self.compact(ui, &snap),
                 }
