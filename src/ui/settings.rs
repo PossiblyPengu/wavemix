@@ -2,7 +2,9 @@
 
 use eframe::egui::{self, RichText, Ui};
 
-use super::{theme, MixerApp, Mode};
+use super::{theme, MixerApp};
+#[cfg(windows)]
+use crate::config::OsdPosition;
 use crate::model::Snapshot;
 use crate::preset;
 
@@ -44,8 +46,26 @@ impl MixerApp {
         });
     }
 
+    /// Settings inside the small Simple window: they replace the app list until you go back.
+    pub(super) fn settings_inline(&mut self, ui: &mut Ui) {
+        // Settings are taller than the app list usually is; let the flyout use its full height.
+        self.simple_height.set(super::SIMPLE_MAX_H);
+        ui.horizontal(|ui| {
+            if ui.button("Back").clicked() {
+                self.show_settings = false;
+            }
+            ui.label(RichText::new("Settings").size(15.0).strong());
+        });
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .id_salt("settings-scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.settings_body(ui));
+    }
+
     pub(super) fn settings_window(&mut self, ctx: &egui::Context) {
-        if self.mode == Mode::Flyout {
+        // Simple mode shows settings inline instead.
+        if self.view() == crate::config::View::Compact {
             return;
         }
         let mut open = self.show_settings;
@@ -132,25 +152,68 @@ impl MixerApp {
             }
 
             section(ui, "On-screen display");
-            let (mut osd, mut vertical, mut opacity) = (
-                self.config.osd,
-                self.config.osd_vertical,
-                self.config.osd_opacity,
+            hint(
+                ui,
+                "A bar that pops out of the tray icon whenever the volume changes, from a hotkey, a \
+                 keyboard knob or anything else. Click it to open wavemix, scroll it to change the \
+                 volume, middle-click it to mute, or drag it where you like.",
             );
-            let mut changed = ui
-                .checkbox(
-                    &mut osd,
-                    "Show a volume bar when a hotkey changes the volume",
-                )
-                .changed();
+            let mut osd = self.config.osd;
+            let mut vertical = self.config.osd_vertical;
+            let mut opacity = self.config.osd_opacity;
+            let mut timeout = self.config.osd_timeout_ms;
+            let mut accent = self.config.osd_accent_system;
+            let mut position = self.config.osd_position;
+            let mut changed = ui.checkbox(&mut osd, "Show the volume bar").changed();
+            ui.horizontal(|ui| {
+                ui.label("Position");
+                egui::ComboBox::from_id_salt("osd-position")
+                    .selected_text(match position {
+                        OsdPosition::AboveTray => "By the tray icon",
+                        OsdPosition::Centre => "Bottom centre",
+                        OsdPosition::Custom => "Where I dragged it",
+                    })
+                    .show_ui(ui, |ui| {
+                        changed |= ui
+                            .selectable_value(
+                                &mut position,
+                                OsdPosition::AboveTray,
+                                "By the tray icon",
+                            )
+                            .changed();
+                        changed |= ui
+                            .selectable_value(&mut position, OsdPosition::Centre, "Bottom centre")
+                            .changed();
+                        changed |= ui
+                            .selectable_value(
+                                &mut position,
+                                OsdPosition::Custom,
+                                "Where I dragged it",
+                            )
+                            .changed();
+                    });
+            });
             changed |= ui.checkbox(&mut vertical, "Vertical bar").changed();
             changed |= ui
+                .checkbox(&mut accent, "Match the Windows accent colour")
+                .changed();
+            changed |= ui
                 .add(egui::Slider::new(&mut opacity, 40..=100).text("Opacity %"))
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut timeout, 500..=5000)
+                        .text("Stays up (ms)")
+                        .step_by(100.0),
+                )
                 .changed();
             if changed {
                 self.config.osd = osd;
                 self.config.osd_vertical = vertical;
                 self.config.osd_opacity = opacity;
+                self.config.osd_timeout_ms = timeout;
+                self.config.osd_accent_system = accent;
+                self.config.osd_position = position;
                 self.config.save();
                 self.sync_osd();
             }

@@ -26,6 +26,11 @@ use strip::StripOutput;
 const PRO_SIZE: [f32; 2] = [1360.0, 840.0];
 /// Simple mode: a small volume control.
 const SIMPLE_SIZE: [f32; 2] = [370.0, 560.0];
+/// The flyout is as tall as its content, within these limits (points).
+#[cfg_attr(not(windows), allow(dead_code))]
+const SIMPLE_MIN_H: f32 = 240.0;
+#[cfg_attr(not(windows), allow(dead_code))]
+const SIMPLE_MAX_H: f32 = 640.0;
 /// Width of the per-app panel beside the Pro console, and the gap before it.
 const SIDE_PANEL_W: f32 = 380.0;
 const SIDE_PANEL_GAP: f32 = 12.0;
@@ -39,8 +44,12 @@ pub struct MixerApp {
     engine_dirty_at: Option<std::time::Instant>,
     config: Config,
     demo: bool,
+    /// Height Simple mode wants to be, in points, measured from its content each frame. The
+    /// taskbar flyout resizes itself to match.
+    simple_height: std::cell::Cell<f32>,
     /// Device the compact view's top card controls; `None` follows the default playback device.
     compact_device: Option<String>,
+    #[cfg_attr(not(windows), allow(dead_code))]
     mode: Mode,
     /// App icons uploaded as textures, by app key. Filled lazily while drawing.
     icons: RefCell<HashMap<String, TextureHandle>>,
@@ -75,8 +84,20 @@ impl MixerApp {
         let _ = background;
         #[cfg(windows)]
         let hk_edit = config.hotkeys.clone();
+        // Simple mode lives in the tray and rises from the taskbar, so its window starts hidden;
+        // so does a launch at login.
         #[cfg(windows)]
-        let shell = shell::ShellState::new(&cc.egui_ctx, background, backend.clone(), &config);
+        let start_hidden = background || config.view == View::Compact;
+        #[cfg(windows)]
+        let shell = shell::ShellState::new(
+            &cc.egui_ctx,
+            start_hidden,
+            background,
+            backend.clone(),
+            &config,
+        );
+        #[cfg(windows)]
+        let flyout_capable = config.view == View::Compact && shell.has_tray();
         #[cfg_attr(not(windows), allow(unused_mut))]
         let mut app = Self {
             backend,
@@ -94,6 +115,7 @@ impl MixerApp {
             engine_dirty_at: None,
             config,
             demo,
+            simple_height: std::cell::Cell::new(SIMPLE_SIZE[1]),
             compact_device: None,
             mode: Mode::Window,
             icons: RefCell::default(),
@@ -106,7 +128,12 @@ impl MixerApp {
             shell,
         };
         #[cfg(windows)]
-        app.apply_hotkeys();
+        {
+            if flyout_capable {
+                app.mode = Mode::Flyout;
+            }
+            app.apply_hotkeys();
+        }
         app
     }
 
@@ -121,20 +148,24 @@ impl MixerApp {
         }
     }
 
-    /// What to draw: the flyout is always the compact list, whatever the window view is.
+    /// Which mode's interface to draw.
     fn view(&self) -> View {
-        match self.mode {
-            Mode::Flyout => View::Compact,
-            Mode::Window => self.config.view,
-        }
+        self.config.view
     }
 
     fn set_view(&mut self, ctx: &egui::Context, view: View) {
         if self.config.view != view {
             self.config.view = view;
             self.config.save();
-            let [w, h] = Self::size_for(&self.config);
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(w, h)));
+            // On Windows the shell turns the window into the flyout (Simple) or the full window
+            // (Pro); elsewhere it is one window that just changes size.
+            #[cfg(windows)]
+            self.request(ctx, shell::Request::Apply);
+            #[cfg(not(windows))]
+            {
+                let [w, h] = Self::size_for(&self.config);
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(w, h)));
+            }
         }
     }
 
@@ -273,13 +304,6 @@ impl MixerApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let ctx = ui.ctx().clone();
-                if self.mode == Mode::Flyout {
-                    if ui.button("Open wavemix").clicked() {
-                        #[cfg(windows)]
-                        self.show_window(&ctx);
-                    }
-                    return;
-                }
                 if ui
                     .selectable_label(self.show_settings, "Settings")
                     .clicked()
@@ -337,11 +361,11 @@ impl MixerApp {
 }
 
 impl eframe::App for MixerApp {
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         #[cfg(windows)]
-        self.handle_shell(ctx);
+        self.handle_shell(ctx, frame);
         #[cfg(not(windows))]
-        let _ = ctx;
+        let _ = (ctx, frame);
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
@@ -369,9 +393,15 @@ impl eframe::App for MixerApp {
                         });
                     }
                     View::Console => self.console(ui),
+                    View::Compact if self.show_settings => self.settings_inline(ui),
                     View::Compact => self.compact(ui, &snap),
                 }
             });
+        // Esc closes the taskbar flyout, as it does any popup.
+        #[cfg(windows)]
+        if self.mode == Mode::Flyout && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.request(ui.ctx(), shell::Request::Hide);
+        }
         self.settings_window(ui.ctx());
         self.flush_engine_config(ui.ctx());
         if self.view() == View::Console {

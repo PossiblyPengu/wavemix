@@ -71,12 +71,15 @@ fn main() -> eframe::Result {
 
     // Launched at login: start hidden in the tray.
     let background = cfg!(windows) && std::env::args().any(|a| a == "--background");
+    // Simple mode is the taskbar flyout, so its window starts hidden and rises from the tray when
+    // shown; so does a launch at login. (If there's no tray, it is shown straight away.)
+    let start_hidden = background || (cfg!(windows) && config.view == config::View::Compact);
 
     let [w, h] = MixerApp::size_for(&config);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("wavemix")
-            .with_visible(!background)
+            .with_visible(!start_hidden)
             .with_inner_size([w, h])
             .with_min_inner_size([340.0, 420.0]),
         ..Default::default()

@@ -6,6 +6,7 @@ mod display;
 #[cfg(windows)]
 mod gfx;
 pub mod layout;
+pub mod wheel;
 
 #[cfg(windows)]
-pub use display::{Osd, OsdSettings};
+pub use display::{MonitorInfo, Osd, OsdEvent, OsdSettings};

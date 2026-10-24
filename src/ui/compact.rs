@@ -61,7 +61,8 @@ impl MixerApp {
             .into_iter()
             .partition(|a| a.active);
 
-        egui::ScrollArea::vertical()
+        let list_top = ui.cursor().top();
+        let scroll = egui::ScrollArea::vertical()
             .id_salt("app-list")
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -94,6 +95,10 @@ impl MixerApp {
                     });
                 }
             });
+        // Remember how tall the content wants the window to be (everything above the list, the
+        // list itself, and the window's bottom margin) so the taskbar flyout can fit it.
+        self.simple_height
+            .set(list_top + scroll.content_size.y + 14.0);
     }
 
     /// The big card: which output you're controlling, and its volume.

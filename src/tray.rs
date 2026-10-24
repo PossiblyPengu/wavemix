@@ -3,53 +3,58 @@
 
 use std::sync::mpsc::{self, Receiver};
 
+use crate::config::View;
 use eframe::egui;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-
-/// Where the icon is on screen, in physical pixels: `(x, y, width, height)`.
-pub type Anchor = (f64, f64, f64, f64);
 
 #[derive(Debug)]
 pub enum TrayAction {
-    ToggleFlyout(Anchor),
-    OpenWindow,
+    /// Left-click on the icon.
+    Toggle,
+    /// "Open wavemix" in the menu.
+    Open,
+    SetView(View),
     Quit,
 }
 
 pub struct Tray {
-    _icon: TrayIcon,
+    icon: TrayIcon,
     rx: Receiver<TrayAction>,
 }
 
 const OPEN_ID: &str = "wavemix-open";
+const SIMPLE_ID: &str = "wavemix-simple";
+const PRO_ID: &str = "wavemix-pro";
 const QUIT_ID: &str = "wavemix-quit";
 
 impl Tray {
     pub fn new(ctx: &egui::Context) -> Option<Self> {
         let menu = Menu::new();
-        let open = MenuItem::with_id(OPEN_ID, "Open mixer", true, None);
+        let open = MenuItem::with_id(OPEN_ID, "Open wavemix", true, None);
+        let simple = MenuItem::with_id(SIMPLE_ID, "Simple mode", true, None);
+        let pro = MenuItem::with_id(PRO_ID, "Pro mode", true, None);
         let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
-        menu.append_items(&[&open, &quit]).ok()?;
+        menu.append_items(&[
+            &open,
+            &simple,
+            &pro,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ])
+        .ok()?;
 
         let (tx, rx) = mpsc::channel();
 
         let (t, c) = (tx.clone(), ctx.clone());
         TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
             if let TrayIconEvent::Click {
-                rect,
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = e
             {
-                let anchor = (
-                    rect.position.x,
-                    rect.position.y,
-                    rect.size.width as f64,
-                    rect.size.height as f64,
-                );
-                let _ = t.send(TrayAction::ToggleFlyout(anchor));
+                let _ = t.send(TrayAction::Toggle);
                 c.request_repaint();
             }
         }));
@@ -57,7 +62,9 @@ impl Tray {
         let c = ctx.clone();
         MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
             let action = match e.id.0.as_str() {
-                OPEN_ID => TrayAction::OpenWindow,
+                OPEN_ID => TrayAction::Open,
+                SIMPLE_ID => TrayAction::SetView(View::Compact),
+                PRO_ID => TrayAction::SetView(View::Console),
                 QUIT_ID => TrayAction::Quit,
                 _ => return,
             };
@@ -72,11 +79,24 @@ impl Tray {
             .with_menu_on_left_click(false)
             .build()
             .ok()?;
-        Some(Self { _icon: icon, rx })
+        Some(Self { icon, rx })
     }
 
     pub fn poll(&self) -> Vec<TrayAction> {
         self.rx.try_iter().collect()
+    }
+
+    /// Centre of the tray icon in physical screen pixels, if the shell can say where it is. When
+    /// the icon is tucked into the overflow flyout this is the chevron's position.
+    pub fn center(&self) -> Option<(i32, i32)> {
+        let r = self.icon.rect()?;
+        if r.size.width == 0 || r.size.height == 0 {
+            return None;
+        }
+        Some((
+            (r.position.x + r.size.width as f64 / 2.0) as i32,
+            (r.position.y + r.size.height as f64 / 2.0) as i32,
+        ))
     }
 }
 

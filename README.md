@@ -10,9 +10,11 @@ are only exercised by running it on Windows.
 
 ## Two modes
 
-* **Simple** (the default): a small volume control in the spirit of EarTrumpet. The output you're
-  listening on, then a slider for every app that's making sound. It's also what the tray icon
-  opens. The mixing engine stays off.
+* **Simple** (the default): a small volume control in the spirit of EarTrumpet. Click the tray icon
+  and it rises out of the taskbar beside the icon (on whichever edge your taskbar is on), shows the
+  output you're listening on and a slider for every app that's making sound, and dismisses when you
+  click away or press Esc. It has no taskbar button of its own, and it is as tall as its content.
+  The mixing engine stays off.
 * **Pro**: a software mixer in the Voicemeeter Banana mould, described below. Opening it for the
   first time picks sensible devices and starts the engine. An optional **Apps panel** beside the
   console sends programs into virtual cables.
@@ -54,8 +56,14 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
 - Make any device the Windows default.
 - Presets: save the volumes and mutes under a name and re-apply them in one click.
 - Global hotkeys for the default playback device (defaults `ctrl+alt+up`, `ctrl+alt+down`,
-  `ctrl+alt+m`; rebind in Settings), with an on-screen volume bar ported from voicemeeter-osd.
-- Tray icon with a compact flyout; closing the window hides it to the tray.
+  `ctrl+alt+m`; rebind in Settings).
+- **On-screen volume bar**, the one from voicemeeter-osd. It pops out of the tray icon with a
+  callout tail pointing back at it, whenever any playback device's volume or mute changes (a
+  hotkey, a keyboard knob, another app). Hover keeps it up, click opens wavemix, scroll changes the
+  volume, middle-click mutes, and dragging parks it anywhere. Horizontal or vertical, optional
+  Windows accent colour, adjustable opacity and timeout, and it stays out of fullscreen games.
+- Tray icon: click for Simple mode, right-click for Open / Simple / Pro / Quit. Closing the Pro
+  window hides it to the tray.
 - Start with Windows (`--background` launches straight into the tray).
 - `--demo` runs against simulated devices (with deliberately drifting clocks); `--dump` writes the
   devices and apps it sees to `%TEMP%\wavemix-dump.txt`, for bug reports.

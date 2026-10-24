@@ -20,6 +20,19 @@ pub enum View {
     Console,
 }
 
+/// Where the on-screen volume display appears.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OsdPosition {
+    /// Beside the tray icon, popping out of it with a callout tail.
+    #[default]
+    AboveTray,
+    /// Low and in the middle of the screen.
+    Centre,
+    /// Wherever the user dragged it.
+    Custom,
+}
+
 /// Global hotkeys, as strings like `ctrl+alt+up`. Empty means unbound.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -83,6 +96,14 @@ pub struct Config {
     pub osd_vertical: bool,
     /// OSD opacity, percent.
     pub osd_opacity: u32,
+    pub osd_position: OsdPosition,
+    /// Where the OSD was dragged to (used when `osd_position` is `Custom`).
+    pub osd_x: i32,
+    pub osd_y: i32,
+    /// How long the OSD stays up after the last change, in milliseconds.
+    pub osd_timeout_ms: u32,
+    /// Draw the OSD in the Windows accent colour.
+    pub osd_accent_system: bool,
 }
 
 impl Default for Config {
@@ -99,6 +120,11 @@ impl Default for Config {
             osd: true,
             osd_vertical: false,
             osd_opacity: 95,
+            osd_position: OsdPosition::default(),
+            osd_x: 0,
+            osd_y: 0,
+            osd_timeout_ms: 1500,
+            osd_accent_system: true,
         }
     }
 }
@@ -154,6 +180,8 @@ mod tests {
         assert_eq!(c.hotkeys.mute, "ctrl+alt+m");
         assert!(c.osd);
         assert_eq!(c.osd_opacity, 95);
+        assert_eq!(c.osd_position, OsdPosition::AboveTray);
+        assert_eq!(c.osd_timeout_ms, 1500);
     }
 
     #[test]
