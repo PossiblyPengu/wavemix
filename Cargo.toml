@@ -1,6 +1,6 @@
 [package]
 name = "wavemix"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 description = "A per-app and per-device audio mixer for Windows, with a Voicemeeter-style console and an EarTrumpet-style tray flyout."
 

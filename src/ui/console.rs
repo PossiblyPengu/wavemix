@@ -30,13 +30,16 @@ const LATENCY_CHOICES: [(&str, u32); 4] = [
     ("Max (100 ms)", 100),
 ];
 
-const BUS_COLORS: [Color32; BUSES] = [
-    theme::ACCENT_OUT,
-    theme::ACCENT_OUT,
-    theme::ACCENT_OUT,
-    theme::ACCENT_IN,
-    theme::ACCENT_IN,
-];
+/// Bus colours: hardware outputs (A) in terracotta, virtual ones (B) in green.
+fn bus_colors() -> [Color32; BUSES] {
+    [
+        theme::ACCENT_OUT(),
+        theme::ACCENT_OUT(),
+        theme::ACCENT_OUT(),
+        theme::ACCENT_IN(),
+        theme::ACCENT_IN(),
+    ]
+}
 
 /// Height of an input strip's controls (everything except the fader), plus the panel's own
 /// title row and padding. The fader takes whatever the window has left.
@@ -70,9 +73,9 @@ fn panel(ui: &mut Ui, title: &str, subtitle: &str, min_h: f32, body: impl FnOnce
                     RichText::new(title)
                         .size(11.0)
                         .strong()
-                        .color(theme::TEXT_DIM),
+                        .color(theme::TEXT_DIM()),
                 );
-                ui.label(RichText::new(subtitle).size(11.0).color(theme::TEXT_DIM));
+                ui.label(RichText::new(subtitle).size(11.0).color(theme::TEXT_DIM()));
             });
             ui.add_space(8.0);
             ui.horizontal_top(|ui| {
@@ -159,8 +162,8 @@ impl MixerApp {
 
     fn engine_bar(&mut self, ui: &mut Ui, stats: &Stats, devices: &Devices) {
         egui::Frame::new()
-            .fill(theme::PANEL)
-            .stroke(Stroke::new(1.0, theme::BORDER))
+            .fill(theme::PANEL())
+            .stroke(Stroke::new(1.0, theme::BORDER()))
             .corner_radius(theme::R_PANEL)
             .shadow(theme::shadow(14, 50))
             .inner_margin(egui::Margin::symmetric(14, 8))
@@ -169,9 +172,9 @@ impl MixerApp {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     let running = self.engine.is_running();
                     let (label, color) = if running {
-                        ("ENGINE ON", theme::METER_GREEN)
+                        ("ENGINE ON", theme::METER_GREEN())
                     } else {
-                        ("ENGINE OFF", theme::TEXT_DIM)
+                        ("ENGINE OFF", theme::TEXT_DIM())
                     };
                     if strip::toggle(ui, label, running, vec2(104.0, 30.0), color)
                         .on_hover_text(
@@ -198,13 +201,13 @@ impl MixerApp {
                             format!("~{latency} ms"),
                             format!("CPU {:.0}%", stats.cpu_percent),
                         ] {
-                            strip::stat_chip(ui, &text, theme::TEXT_DIM);
+                            strip::stat_chip(ui, &text, theme::TEXT_DIM());
                         }
                         if drops > 0 {
                             strip::stat_chip(
                                 ui,
                                 &format!("{drops} dropouts"),
-                                theme::NOTE_TEXT,
+                                theme::NOTE_TEXT(),
                             )
                             .on_hover_text(format!(
                                 "Audio glitched. Links buffer a little more after each dropout, so \
@@ -220,7 +223,7 @@ impl MixerApp {
                         ui.label(
                             RichText::new("Turn the engine on to start mixing")
                                 .size(12.0)
-                                .color(theme::TEXT_DIM),
+                                .color(theme::TEXT_DIM()),
                         );
                     }
                     if running {
@@ -231,7 +234,7 @@ impl MixerApp {
                         // Show or hide the per-app list beside the console, growing or shrinking
                         // the window by its width so the console keeps its room.
                         let on = self.config.pro_apps_panel;
-                        if strip::toggle(ui, "Apps panel", on, vec2(84.0, 26.0), theme::ACCENT)
+                        if strip::toggle(ui, "Apps panel", on, vec2(84.0, 26.0), theme::ACCENT())
                             .on_hover_text("List running apps beside the mixer, to send them into virtual cables")
                             .clicked()
                         {
@@ -267,7 +270,7 @@ impl MixerApp {
                             })
                             .response
                             .on_hover_text("Lower latency reacts faster but is more likely to glitch");
-                        ui.label(RichText::new("Latency").size(12.0).color(theme::TEXT_DIM));
+                        ui.label(RichText::new("Latency").size(12.0).color(theme::TEXT_DIM()));
                         if !devices
                             .inputs
                             .iter()
@@ -321,7 +324,7 @@ impl MixerApp {
         let (routed, cable) = self.route_state();
         let Some(cable) = cable else {
             if self.config.engine.io.inputs[HARDWARE_STRIPS].is_some() {
-                strip::stat_chip(ui, "CABLE Input is disabled", theme::NOTE_TEXT)
+                strip::stat_chip(ui, "CABLE Input is disabled", theme::NOTE_TEXT())
                 .on_hover_text("Windows sound settings > Playback > right-click > Show disabled devices > enable CABLE Input");
             }
             return;
@@ -332,7 +335,7 @@ impl MixerApp {
         } else {
             "Windows is playing straight to your speakers, so the mixer can't see it. Click to send it through wavemix."
         };
-        if strip::toggle(ui, label, routed, vec2(150.0, 28.0), theme::ACCENT)
+        if strip::toggle(ui, label, routed, vec2(150.0, 28.0), theme::ACCENT())
             .on_hover_text(tip)
             .clicked()
         {
@@ -343,7 +346,7 @@ impl MixerApp {
             }
         }
         if !routed {
-            strip::stat_chip(ui, "Windows sound bypasses the mixer", theme::NOTE_TEXT);
+            strip::stat_chip(ui, "Windows sound bypasses the mixer", theme::NOTE_TEXT());
         }
     }
 
@@ -366,7 +369,7 @@ impl MixerApp {
                 || devices.inputs.iter().any(|d| d.name.contains("CABLE Output"))
             {
                 egui::Frame::new()
-                    .fill(theme::TINT_NOTE)
+                    .fill(theme::TINT_NOTE())
                     .corner_radius(theme::R_CARD)
                     .inner_margin(egui::Margin::symmetric(14, 10))
                     .show(ui, |ui| {
@@ -374,7 +377,7 @@ impl MixerApp {
                         ui.label(
                             RichText::new("Switching outputs needs CABLE Input enabled in Windows sound settings (Playback > Show disabled devices).")
                                 .size(12.0)
-                                .color(theme::NOTE_TEXT),
+                                .color(theme::NOTE_TEXT()),
                         );
                     });
             }
@@ -387,14 +390,14 @@ impl MixerApp {
             Vec::new()
         };
         let mut next = active.clone();
-        ui.label(RichText::new("PLAY THROUGH").size(11.0).strong().color(theme::TEXT_DIM));
+        ui.label(RichText::new("PLAY THROUGH").size(11.0).strong().color(theme::TEXT_DIM()));
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             for d in &hardware {
                 let on = active.contains(&d.name);
                 let label = self.device_label(&d.name, hardware.iter().map(|h| h.name.as_str()));
                 let label = strip::truncate(ui, &label, 150.0, 11.5);
-                if strip::toggle(ui, &label, on, vec2(170.0, 28.0), theme::ACCENT)
+                if strip::toggle(ui, &label, on, vec2(170.0, 28.0), theme::ACCENT())
                     .on_hover_text(format!(
                         "{}\nTick more than one to play on all of them at once",
                         d.name
@@ -472,7 +475,7 @@ impl MixerApp {
             return;
         };
         ui.add_space(4.0);
-        ui.label(RichText::new(msg).size(12.0).color(theme::NOTE_TEXT));
+        ui.label(RichText::new(msg).size(12.0).color(theme::NOTE_TEXT()));
     }
 
     fn route_windows_audio(&mut self, cable: &crate::model::Device) {
@@ -686,7 +689,7 @@ impl MixerApp {
                 if group.is_empty() {
                     continue;
                 }
-                ui.label(RichText::new(LABELS[k]).size(10.0).color(theme::TEXT_DIM));
+                ui.label(RichText::new(LABELS[k]).size(10.0).color(theme::TEXT_DIM()));
                 for d in group {
                     let label = format!(
                         "{}{}",
@@ -715,7 +718,7 @@ impl MixerApp {
                 ui.label(
                     RichText::new("No virtual cable found.")
                         .size(11.0)
-                        .color(theme::TEXT_DIM),
+                        .color(theme::TEXT_DIM()),
                 );
                 ui.hyperlink_to("Get VB-Cable (free)", "https://vb-audio.com/Cable/");
             }
@@ -725,10 +728,10 @@ impl MixerApp {
 
     fn status_dot(&self, ui: &mut Ui, status: &SlotStatus) {
         let (color, tip) = match status {
-            SlotStatus::Running { rate } => (theme::METER_GREEN, format!("Running at {rate} Hz")),
-            SlotStatus::Missing => (theme::METER_YELLOW, "Device not found".to_string()),
-            SlotStatus::Error(e) => (theme::MUTE, format!("Couldn't open: {e}")),
-            SlotStatus::Off => (theme::TEXT_DIM, "No device, or engine off".to_string()),
+            SlotStatus::Running { rate } => (theme::METER_GREEN(), format!("Running at {rate} Hz")),
+            SlotStatus::Missing => (theme::METER_YELLOW(), "Device not found".to_string()),
+            SlotStatus::Error(e) => (theme::MUTE(), format!("Couldn't open: {e}")),
+            SlotStatus::Off => (theme::TEXT_DIM(), "No device, or engine off".to_string()),
         };
         let (rect, resp) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
         ui.painter().circle_filled(rect.center(), 4.0, color);
@@ -749,9 +752,9 @@ impl MixerApp {
         let peaks = self.engine.levels().strip(i);
         let is_virtual_slot = i >= HARDWARE_STRIPS;
         let accent = if is_virtual_slot {
-            theme::ACCENT_IN
+            theme::ACCENT_IN()
         } else {
-            theme::ACCENT
+            theme::ACCENT()
         };
         strip_card(ui, |ui| {
             ui.set_width(CONSOLE_STRIP_W);
@@ -785,7 +788,7 @@ impl MixerApp {
                     RichText::new(db_text(p.gain_db))
                         .size(12.0)
                         .monospace()
-                        .color(theme::TEXT),
+                        .color(theme::TEXT()),
                 );
             });
             ui.add_space(4.0);
@@ -793,13 +796,13 @@ impl MixerApp {
             // click away, under "Route" and "Tune".
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE)
+                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE())
                     .on_hover_text("Mute")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Solo", p.solo, vec2(53.0, 28.0), theme::METER_YELLOW)
+                if strip::toggle(ui, "Solo", p.solo, vec2(53.0, 28.0), theme::METER_YELLOW())
                     .on_hover_text("Solo: hear only soloed strips")
                     .clicked()
                 {
@@ -824,7 +827,7 @@ impl MixerApp {
                 ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
                 strip::caption(ui, "SEND TO");
                 ui.horizontal_wrapped(|ui| {
-                    for (b, bus_color) in BUS_COLORS.iter().copied().enumerate() {
+                    for (b, bus_color) in bus_colors().into_iter().enumerate() {
                         // A strip that listens to a cable can't also feed the bus playing into it.
                         let loops = match (
                             &self.config.engine.io.inputs[i],
@@ -835,7 +838,7 @@ impl MixerApp {
                         };
                         let (color, tip) = if loops && p.sends[b] {
                             (
-                                theme::MUTE,
+                                theme::MUTE(),
                                 format!(
                                     "Feedback loop! This strip listens to the cable {} plays into. Turn this send off.",
                                     bus_name(b)
@@ -866,7 +869,7 @@ impl MixerApp {
                     p.pan = v;
                 }
                 ui.add_space(2.0);
-                if strip::toggle(ui, "Mono", p.mono, vec2(64.0, 28.0), theme::ACCENT)
+                if strip::toggle(ui, "Mono", p.mono, vec2(64.0, 28.0), theme::ACCENT())
                     .on_hover_text("Mix left and right into one")
                     .clicked()
                 {
@@ -901,7 +904,7 @@ impl MixerApp {
             ui.set_width(CONSOLE_STRIP_W);
             ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
             ui.horizontal(|ui| {
-                self.title_label(ui, super::Rename::Bus, b, Some(BUS_COLORS[b]));
+                self.title_label(ui, super::Rename::Bus, b, Some(bus_colors()[b]));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     self.status_dot(ui, &status.outputs[b]);
                 });
@@ -927,7 +930,7 @@ impl MixerApp {
                 fader_h,
                 p.gain_db,
                 peaks,
-                BUS_COLORS[b],
+                bus_colors()[b],
                 p.mute,
             ) {
                 p.gain_db = db;
@@ -937,19 +940,19 @@ impl MixerApp {
                     RichText::new(db_text(p.gain_db))
                         .size(12.0)
                         .monospace()
-                        .color(theme::TEXT),
+                        .color(theme::TEXT()),
                 );
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE)
+                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE())
                     .on_hover_text("Mute this bus")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Limit", p.limiter, vec2(53.0, 28.0), theme::METER_GREEN)
+                if strip::toggle(ui, "Limit", p.limiter, vec2(53.0, 28.0), theme::METER_GREEN())
                     .on_hover_text("Limiter: stops the summed mix from clipping")
                     .clicked()
                 {
@@ -982,8 +985,8 @@ impl MixerApp {
 
     fn editor(&mut self, ui: &mut Ui, i: usize, tab: EditorTab, p: &mut StripParams) {
         egui::Frame::new()
-            .fill(theme::PANEL)
-            .stroke(Stroke::new(1.0, theme::BORDER))
+            .fill(theme::PANEL())
+            .stroke(Stroke::new(1.0, theme::BORDER()))
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
@@ -1051,7 +1054,7 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
         ui.label(
             RichText::new("Drag the dots: sideways for frequency, up and down for gain.")
                 .size(11.0)
-                .color(theme::TEXT_DIM),
+                .color(theme::TEXT_DIM()),
         );
         if ui.small_button("Reset").clicked() {
             *p = EqParams {
@@ -1065,12 +1068,12 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
     let width = ui.available_width().min(680.0);
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 170.0), Sense::click_and_drag());
     let painter = ui.painter();
-    painter.rect_filled(rect, 8.0, theme::METER_BG);
+    painter.rect_filled(rect, 8.0, theme::METER_BG());
     for hz in [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0] {
         let x = hz_to_x(rect, hz);
         painter.line_segment(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(1.0, theme::BORDER),
+            Stroke::new(1.0, theme::BORDER()),
         );
         let label = if hz >= 1000.0 {
             format!("{}k", hz / 1000.0)
@@ -1082,29 +1085,29 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
             egui::Align2::LEFT_BOTTOM,
             label,
             egui::FontId::proportional(9.0),
-            theme::TEXT_DIM,
+            theme::TEXT_DIM(),
         );
     }
     for db in [-12.0, -6.0, 0.0, 6.0, 12.0] {
         let y = db_to_y(rect, db);
         painter.line_segment(
             [pos2(rect.left(), y), pos2(rect.right(), y)],
-            Stroke::new(if db == 0.0 { 1.5 } else { 1.0 }, theme::BORDER),
+            Stroke::new(if db == 0.0 { 1.5 } else { 1.0 }, theme::BORDER()),
         );
         painter.text(
             pos2(rect.left() + 3.0, y - 1.0),
             egui::Align2::LEFT_BOTTOM,
             format!("{db:+.0}"),
             egui::FontId::proportional(9.0),
-            theme::TEXT_DIM,
+            theme::TEXT_DIM(),
         );
     }
 
     // The combined response curve.
     let curve_color = if p.enabled {
-        theme::ACCENT
+        theme::ACCENT()
     } else {
-        theme::TEXT_DIM
+        theme::TEXT_DIM()
     };
     let pts: Vec<egui::Pos2> = (0..=200)
         .map(|k| {
@@ -1179,13 +1182,13 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
     for (k, s) in screen.iter().enumerate() {
         let label = ["Low", "Mid", "High"][k];
         painter.circle_filled(*s, 7.0, curve_color);
-        painter.circle_stroke(*s, 7.0, Stroke::new(2.0, theme::BG));
+        painter.circle_stroke(*s, 7.0, Stroke::new(2.0, theme::BG()));
         painter.text(
             *s + vec2(0.0, -12.0),
             egui::Align2::CENTER_BOTTOM,
             label,
             egui::FontId::proportional(10.0),
-            theme::TEXT,
+            theme::TEXT(),
         );
     }
 
@@ -1253,9 +1256,9 @@ fn gate_editor(ui: &mut Ui, p: &mut StripParams, open: bool) {
         ui.checkbox(&mut g.enabled, "Enable noise gate");
         if g.enabled {
             let (text, color) = if open {
-                ("open", theme::METER_GREEN)
+                ("open", theme::METER_GREEN())
             } else {
-                ("closed", theme::TEXT_DIM)
+                ("closed", theme::TEXT_DIM())
             };
             ui.label(RichText::new(format!("gate {text}")).color(color));
         }
@@ -1265,7 +1268,7 @@ fn gate_editor(ui: &mut Ui, p: &mut StripParams, open: bool) {
             "Silences the strip when it falls below the threshold, so background noise disappears between words.",
         )
         .size(11.0)
-        .color(theme::TEXT_DIM),
+        .color(theme::TEXT_DIM()),
     );
     ui.add_space(4.0);
     ui.add(
@@ -1295,7 +1298,7 @@ fn comp_editor(ui: &mut Ui, p: &mut StripParams, gain_reduction_db: f32) {
             ui.label(
                 RichText::new(format!("reducing {:.1} dB", -gain_reduction_db))
                     .size(12.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::TEXT_DIM()),
             );
         }
     });
@@ -1304,17 +1307,17 @@ fn comp_editor(ui: &mut Ui, p: &mut StripParams, gain_reduction_db: f32) {
             "Evens out loud and quiet parts: anything above the threshold is turned down by the ratio.",
         )
         .size(11.0)
-        .color(theme::TEXT_DIM),
+        .color(theme::TEXT_DIM()),
     );
     // Gain-reduction meter: grows to the left from zero.
     let (rect, _) = ui.allocate_exact_size(vec2(260.0, 10.0), Sense::hover());
-    ui.painter().rect_filled(rect, 4.0, theme::METER_BG);
+    ui.painter().rect_filled(rect, 4.0, theme::METER_BG());
     let frac = (-gain_reduction_db / 24.0).clamp(0.0, 1.0);
     let fill = egui::Rect::from_min_max(
         pos2(rect.right() - rect.width() * frac, rect.top()),
         rect.max,
     );
-    ui.painter().rect_filled(fill, 4.0, theme::METER_YELLOW);
+    ui.painter().rect_filled(fill, 4.0, theme::METER_YELLOW());
     ui.add_space(4.0);
     ui.add(
         egui::Slider::new(&mut c.threshold_db, -60.0..=0.0)

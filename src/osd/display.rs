@@ -80,6 +80,8 @@ pub struct OsdSettings {
     pub hide_windows_popup: bool,
     /// Names you gave devices, by device id.
     pub device_names: HashMap<String, String>,
+    /// Draw on a dark card.
+    pub dark: bool,
 }
 
 /// What the display asks of the app.
@@ -114,6 +116,7 @@ impl Osd {
         events: mpsc::Sender<OsdEvent>,
         repaint: Arc<dyn Fn() + Send + Sync>,
     ) -> Option<Self> {
+        DARK.store(settings.dark, Ordering::Relaxed);
         let shared = Arc::new(Shared {
             settings: Mutex::new(settings),
             tray: Mutex::new(None),
@@ -130,6 +133,7 @@ impl Osd {
     }
 
     pub fn set_settings(&self, settings: OsdSettings) {
+        DARK.store(settings.dark, Ordering::Relaxed);
         if let Ok(mut s) = self.shared.settings.lock() {
             *s = settings;
         }
@@ -513,8 +517,8 @@ impl State {
             card_w,
             card_h,
             radius,
-            argb(250, 255, 254, 251),
-            argb(250, 246, 242, 235),
+            card_top(),
+            card_bottom(),
         );
         canvas.stroke_round_rect(
             pad + 0.5,
@@ -522,7 +526,7 @@ impl State {
             card_w - 1.0,
             card_h - 1.0,
             radius,
-            argb(46, 58, 50, 40),
+            edge_color(),
             s(1.0),
         );
 
@@ -862,6 +866,48 @@ unsafe fn is_desktop(hwnd: HWND) -> bool {
     class == "WorkerW" || class == "Progman"
 }
 
+// --- palette ----------------------------------------------------------------------------------
+
+/// Whether the bar is drawn on a dark card. Set from the app's theme; read while drawing.
+static DARK: AtomicBool = AtomicBool::new(false);
+
+fn dark() -> bool {
+    DARK.load(Ordering::Relaxed)
+}
+
+/// Text and symbols: dark brown on the light card, warm white on the dark one.
+fn ink(alpha: u8) -> u32 {
+    if dark() {
+        argb(alpha, 245, 240, 232)
+    } else {
+        argb(alpha, 58, 50, 40)
+    }
+}
+
+fn card_top() -> u32 {
+    if dark() {
+        argb(247, 40, 34, 28)
+    } else {
+        argb(250, 255, 254, 251)
+    }
+}
+
+fn card_bottom() -> u32 {
+    if dark() {
+        argb(247, 28, 23, 19)
+    } else {
+        argb(250, 246, 242, 235)
+    }
+}
+
+fn edge_color() -> u32 {
+    if dark() {
+        argb(30, 255, 255, 255)
+    } else {
+        argb(46, 58, 50, 40)
+    }
+}
+
 // --- drawing (ported from voicemeeter-osd) ----------------------------------------------------
 
 /// Green through amber to red as the signal approaches clipping.
@@ -894,9 +940,9 @@ unsafe fn draw_tail(
     };
     canvas.fill_polygon(
         &[(cx - half, base), (cx + half, base), (cx, tip)],
-        argb(250, 246, 242, 235),
+        card_bottom(),
     );
-    let edge = argb(46, 58, 50, 40);
+    let edge = edge_color();
     canvas.stroke_line(cx - half, base, cx, tip, edge, 1.0);
     canvas.stroke_line(cx + half, base, cx, tip, edge, 1.0);
 }
@@ -943,7 +989,7 @@ unsafe fn draw_speaker(canvas: &Canvas, cx: f32, cy: f32, size: f32, muted: bool
             s * 0.50,
             -52.0,
             104.0,
-            argb(((color >> 24) as u8).saturating_sub(70), 58, 50, 40),
+            ink(((color >> 24) as u8).saturating_sub(70)),
             s * 0.13,
         );
     }
@@ -995,7 +1041,7 @@ unsafe fn draw_vertical(
         pad + s(24.0),
         s(20.0),
         frame.muted,
-        argb(235, 58, 50, 40),
+        ink(235),
     );
 
     let track_w = s(10.0);
@@ -1010,7 +1056,7 @@ unsafe fn draw_vertical(
         track_w,
         track_h,
         track_w / 2.0,
-        argb(38, 58, 50, 40),
+        ink(38),
     );
 
     // Live signal meter alongside the fader, so you can see level as well as the setting.
@@ -1022,7 +1068,7 @@ unsafe fn draw_vertical(
         meter_w,
         track_h,
         meter_w / 2.0,
-        argb(30, 58, 50, 40),
+        ink(30),
     );
     let meter_h = track_h * frame.meter.clamp(0.0, 1.0);
     if meter_h > 0.5 {
@@ -1068,7 +1114,7 @@ unsafe fn draw_vertical(
         card_w,
         s(14.0),
         s(10.5),
-        argb(150, 58, 50, 40),
+        ink(150),
         ALIGN_CENTER,
         false,
     );
@@ -1079,7 +1125,7 @@ unsafe fn draw_vertical(
         card_w,
         s(20.0),
         s(14.0),
-        argb(240, 58, 50, 40),
+        ink(240),
         ALIGN_CENTER,
         true,
     );
@@ -1090,7 +1136,7 @@ unsafe fn draw_vertical(
         card_w,
         s(14.0),
         s(10.5),
-        argb(140, 58, 50, 40),
+        ink(140),
         ALIGN_CENTER,
         false,
     );
@@ -1113,7 +1159,7 @@ unsafe fn draw_horizontal(
         pad + card_h / 2.0,
         s(26.0),
         frame.muted,
-        argb(235, 58, 50, 40),
+        ink(235),
     );
 
     let track_left = pad + s(62.0);
@@ -1129,7 +1175,7 @@ unsafe fn draw_horizontal(
         track_w,
         s(14.0),
         s(10.5),
-        argb(150, 58, 50, 40),
+        ink(150),
         ALIGN_NEAR,
         false,
     );
@@ -1139,7 +1185,7 @@ unsafe fn draw_horizontal(
         track_w,
         track_h,
         track_h / 2.0,
-        argb(38, 58, 50, 40),
+        ink(38),
     );
 
     // Live signal meter under the fader, with the same peak-hold behaviour as the vertical layout.
@@ -1151,7 +1197,7 @@ unsafe fn draw_horizontal(
         track_w,
         meter_h,
         meter_h / 2.0,
-        argb(30, 58, 50, 40),
+        ink(30),
     );
     let meter_w = track_w * frame.meter.clamp(0.0, 1.0);
     if meter_w > 0.5 {
@@ -1198,7 +1244,7 @@ unsafe fn draw_horizontal(
         s(58.0),
         s(20.0),
         s(15.0),
-        argb(240, 58, 50, 40),
+        ink(240),
         ALIGN_CENTER,
         true,
     );
@@ -1209,7 +1255,7 @@ unsafe fn draw_horizontal(
         s(58.0),
         s(14.0),
         s(10.5),
-        argb(140, 58, 50, 40),
+        ink(140),
         ALIGN_CENTER,
         false,
     );

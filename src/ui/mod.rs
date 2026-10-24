@@ -47,6 +47,12 @@ pub struct MixerApp {
     route_checked: bool,
     /// Names saved under Windows device names have been moved to device ids.
     names_migrated: bool,
+    /// The theme setting changed; apply it on the next frame.
+    theme_dirty: bool,
+    /// The window frame (title bar) theme last sent to the OS.
+    frame_dark: Option<bool>,
+    /// When the theme was last compared with the setting (and Windows).
+    theme_checked: std::time::Instant,
     /// Auto-route has already happened for this engine run.
     auto_routed: bool,
     config: Config,
@@ -98,6 +104,7 @@ impl MixerApp {
         demo: bool,
         background: bool,
     ) -> Self {
+        theme::set_dark(theme::wants_dark(config.theme));
         theme::apply(&cc.egui_ctx);
         #[cfg(not(windows))]
         let _ = background;
@@ -134,6 +141,9 @@ impl MixerApp {
             engine_dirty_at: None,
             route_checked: false,
             names_migrated: false,
+            theme_dirty: false,
+            frame_dark: None,
+            theme_checked: std::time::Instant::now(),
             auto_routed: false,
             config,
             demo,
@@ -283,6 +293,32 @@ impl MixerApp {
             .map(str::to_string)
     }
 
+    /// Keep the palette in step with the setting, and with Windows when set to follow it.
+    pub(super) fn follow_theme(&mut self, ctx: &egui::Context) {
+        let due = self.theme_checked.elapsed() > std::time::Duration::from_secs(2);
+        if !due && !self.theme_dirty {
+            return;
+        }
+        self.theme_checked = std::time::Instant::now();
+        self.theme_dirty = false;
+        let dark = theme::wants_dark(self.config.theme);
+        if self.frame_dark != Some(dark) {
+            // Tints the title bar and window frame to match.
+            self.frame_dark = Some(dark);
+            ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(if dark {
+                egui::SystemTheme::Dark
+            } else {
+                egui::SystemTheme::Light
+            }));
+        }
+        if dark != theme::is_dark() {
+            theme::set_dark(dark);
+            theme::apply(ctx);
+            self.sync_osd_names();
+            ctx.request_repaint();
+        }
+    }
+
     /// Tell the volume bar about changed names (Windows only).
     fn sync_osd_names(&self) {
         #[cfg(windows)]
@@ -389,7 +425,7 @@ impl MixerApp {
                          interface that may not work on every Windows version.",
                     )
                     .size(11.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::TEXT_DIM()),
                 );
                 ui.add_space(4.0);
                 if ui.button("Turn on app routing").clicked() {
@@ -401,7 +437,7 @@ impl MixerApp {
             ui.label(
                 RichText::new("PLAY THROUGH")
                     .size(10.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::TEXT_DIM()),
             );
             for d in snap.devices.iter().filter(|d| d.flow == Flow::Render) {
                 let label = format!(
@@ -444,11 +480,11 @@ impl MixerApp {
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             let (mark, _) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::hover());
-            ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT);
-            ui.painter().circle_filled(mark.center(), 3.0, theme::CARD);
-            ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT));
+            ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT());
+            ui.painter().circle_filled(mark.center(), 3.0, theme::CARD());
+            ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT()));
             if self.demo && pro {
-                ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM))
+                ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM()))
                     .on_hover_text("Showing fake devices and apps");
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -483,14 +519,14 @@ impl MixerApp {
             RichText::new("APPS")
                 .size(11.0)
                 .strong()
-                .color(theme::TEXT_DIM),
+                .color(theme::TEXT_DIM()),
         );
         ui.label(
             RichText::new(
                 "Use an app's pill to play it through a virtual cable; that cable's input strip then carries it.",
             )
             .size(11.0)
-            .color(theme::TEXT_DIM),
+            .color(theme::TEXT_DIM()),
         );
         ui.add_space(6.0);
         self.app_list(ui, snap, true);
@@ -500,6 +536,7 @@ impl MixerApp {
 impl eframe::App for MixerApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.route_housekeeping();
+        self.follow_theme(ctx);
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]
@@ -519,7 +556,7 @@ impl eframe::App for MixerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let snap = self.backend.snapshot();
         egui::Frame::new()
-            .fill(theme::BG)
+            .fill(theme::BG())
             .inner_margin(12)
             .show(ui, |ui| {
                 ui.set_min_size(ui.available_size());

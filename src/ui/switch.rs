@@ -59,8 +59,8 @@ impl MixerApp {
     /// The small card offered at the top of the window when Voicemeeter is installed.
     pub(super) fn switch_banner(&mut self, ui: &mut Ui) {
         egui::Frame::new()
-            .fill(theme::TINT_NOTE)
-            .stroke(egui::Stroke::new(1.0, theme::ACCENT.linear_multiply(0.45)))
+            .fill(theme::TINT_NOTE())
+            .stroke(egui::Stroke::new(1.0, theme::ACCENT().linear_multiply(0.45)))
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(16, 12))
             .show(ui, |ui| {
@@ -74,7 +74,7 @@ impl MixerApp {
                         "Switch over",
                         true,
                         egui::vec2(104.0, 30.0),
-                        theme::ACCENT,
+                        theme::ACCENT(),
                     )
                     .clicked();
                     let later = super::strip::ghost_button(ui, "Not now", false).clicked();
@@ -92,7 +92,7 @@ impl MixerApp {
                     ui.label(
                         RichText::new("Bring your setup over to wavemix in one click.")
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::TEXT_DIM()),
                     );
                 };
                 if wide {
@@ -152,7 +152,7 @@ impl MixerApp {
                 RichText::new("Done")
                     .size(15.0)
                     .strong()
-                    .color(theme::METER_GREEN),
+                    .color(theme::METER_GREEN()),
             );
             for line in &report {
                 ui.label(RichText::new(line).size(12.0));
@@ -172,7 +172,7 @@ impl MixerApp {
         if !self.vm_installed {
             ui.label(
                 RichText::new("Voicemeeter doesn't seem to be installed on this PC.")
-                    .color(theme::METER_YELLOW),
+                    .color(theme::METER_YELLOW()),
             );
         } else {
             ui.label(
@@ -180,7 +180,7 @@ impl MixerApp {
                     "Voicemeeter needs to be running so its current settings can be read.",
                 )
                 .size(12.0)
-                .color(theme::TEXT_DIM),
+                .color(theme::TEXT_DIM()),
             );
         }
         ui.add_space(6.0);
@@ -215,7 +215,7 @@ impl MixerApp {
                  use it in their place.",
             )
             .size(11.0)
-            .color(theme::TEXT_DIM),
+            .color(theme::TEXT_DIM()),
         );
         ui.add_space(8.0);
         ui.horizontal(|ui| {

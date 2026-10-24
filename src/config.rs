@@ -21,6 +21,16 @@ pub enum View {
     Console,
 }
 
+/// Light, dark, or follow Windows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// Where the on-screen volume display appears.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -107,6 +117,7 @@ pub struct Config {
     pub osd_accent_system: bool,
     /// Hide Windows' own volume popup whenever the wavemix bar is shown.
     pub hide_windows_osd: bool,
+    pub theme: ThemeMode,
     /// Names you gave devices, keyed by Windows' stable device id (so twins and driver renames
     /// don't mix them up).
     pub device_names: BTreeMap<String, String>,
@@ -142,6 +153,7 @@ impl Default for Config {
             osd_timeout_ms: 1500,
             osd_accent_system: true,
             hide_windows_osd: true,
+            theme: ThemeMode::System,
             device_names: BTreeMap::new(),
             strip_names: Vec::new(),
             bus_names: Vec::new(),

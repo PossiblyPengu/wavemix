@@ -3,6 +3,7 @@
 use eframe::egui::{self, RichText, Ui};
 
 use super::{strip, theme, MixerApp};
+use crate::config::ThemeMode;
 #[cfg(windows)]
 use crate::config::OsdPosition;
 use crate::model::Snapshot;
@@ -12,7 +13,7 @@ impl MixerApp {
     pub(super) fn presets_menu(&mut self, ui: &mut Ui, snap: &Snapshot) {
         ui.menu_button("Presets", |ui| {
             if self.config.presets.is_empty() {
-                ui.label(RichText::new("No presets yet").color(theme::TEXT_DIM));
+                ui.label(RichText::new("No presets yet").color(theme::TEXT_DIM()));
             }
             let mut apply = None;
             for (i, p) in self.config.presets.iter().enumerate() {
@@ -100,6 +101,26 @@ impl MixerApp {
                 }
             }
         }
+        ui.horizontal(|ui| {
+            ui.label("Theme");
+            let mut mode = self.config.theme;
+            egui::ComboBox::from_id_salt("theme-mode")
+                .selected_text(match mode {
+                    ThemeMode::System => "Match Windows",
+                    ThemeMode::Light => "Light",
+                    ThemeMode::Dark => "Dark",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut mode, ThemeMode::System, "Match Windows");
+                    ui.selectable_value(&mut mode, ThemeMode::Light, "Light");
+                    ui.selectable_value(&mut mode, ThemeMode::Dark, "Dark");
+                });
+            if mode != self.config.theme {
+                self.config.theme = mode;
+                self.config.save();
+                self.theme_dirty = true;
+            }
+        });
         let mut auto = self.config.auto_route;
         if ui
             .checkbox(&mut auto, "Route Windows audio through the mixer when the engine is on")
@@ -161,7 +182,7 @@ impl MixerApp {
                 self.apply_hotkeys_from_edit();
             }
             for msg in &self.shell.hk_status {
-                ui.label(RichText::new(msg).size(11.0).color(theme::MUTE));
+                ui.label(RichText::new(msg).size(11.0).color(theme::MUTE()));
             }
 
             section(ui, "On-screen display");
@@ -266,7 +287,7 @@ impl MixerApp {
                             .desired_width(ui.available_width().min(260.0))
                             .char_limit(32),
                     );
-                    ui.label(RichText::new(&name).size(11.0).color(theme::TEXT_DIM));
+                    ui.label(RichText::new(&name).size(11.0).color(theme::TEXT_DIM()));
                     if edit.changed() {
                         changed = true;
                     }
@@ -358,5 +379,5 @@ fn section(ui: &mut Ui, title: &str) {
 }
 
 fn hint(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(11.5).color(theme::TEXT_DIM));
+    ui.label(RichText::new(text).size(11.5).color(theme::TEXT_DIM()));
 }

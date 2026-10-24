@@ -14,7 +14,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::platform::windows::{CornerPreference, WindowExtWindows};
 use winit::window::{Window, WindowLevel};
 
-use super::{MixerApp, Mode, SIMPLE_SIZE};
+use super::{theme, MixerApp, Mode, SIMPLE_SIZE};
 use crate::backend::Handle;
 use crate::config::{Config, OsdPosition, View};
 use crate::hotkeys::{HotkeyAction, Hotkeys};
@@ -138,6 +138,7 @@ pub fn osd_settings(config: &Config) -> OsdSettings {
         accent_system: config.osd_accent_system,
         volume_step: config.volume_step,
         hide_windows_popup: config.hide_windows_osd,
+        dark: theme::is_dark(),
         device_names: config
             .device_names
             .iter()

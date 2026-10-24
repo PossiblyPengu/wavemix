@@ -35,7 +35,7 @@ impl MixerApp {
             ui.label(
                 RichText::new("Plug in or enable an output device in Windows sound settings.")
                     .size(12.0)
-                    .color(theme::TEXT_DIM),
+                    .color(theme::TEXT_DIM()),
             );
             return;
         };
@@ -74,7 +74,7 @@ impl MixerApp {
                     ui.label(
                         RichText::new("Apps appear here as soon as they make sound.")
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::TEXT_DIM()),
                     );
                     ui.add_space(8.0);
                 }
@@ -86,7 +86,7 @@ impl MixerApp {
                     egui::CollapsingHeader::new(
                         RichText::new(format!("Not playing ({})", idle.len()))
                             .size(12.0)
-                            .color(theme::TEXT_DIM),
+                            .color(theme::TEXT_DIM()),
                     )
                     .default_open(false)
                     .show(ui, |ui| {
@@ -106,8 +106,8 @@ impl MixerApp {
     /// The big card: which output you're controlling, and its volume.
     fn device_card(&mut self, ui: &mut Ui, outputs: &[Device], dev: &Device) {
         egui::Frame::new()
-            .fill(theme::PANEL)
-            .stroke(egui::Stroke::new(1.0, theme::BORDER))
+            .fill(theme::PANEL())
+            .stroke(egui::Stroke::new(1.0, theme::BORDER()))
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(14, 12))
             .show(ui, |ui| {
@@ -117,7 +117,7 @@ impl MixerApp {
                         RichText::new("OUTPUT")
                             .size(11.0)
                             .strong()
-                            .color(theme::TEXT_DIM),
+                            .color(theme::TEXT_DIM()),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let width = ui.available_width().min(240.0);
@@ -165,7 +165,7 @@ impl MixerApp {
                     dev.volume,
                     dev.muted,
                     dev.peak,
-                    theme::ACCENT_OUT,
+                    theme::ACCENT_OUT(),
                 );
                 if let Some(volume) = change.volume {
                     self.backend.send(Command::SetDeviceVolume {
@@ -185,7 +185,7 @@ impl MixerApp {
     fn app_row(&mut self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip, pill: bool) {
         let icon: Option<TextureHandle> = self.icon(ui.ctx(), &app.key, &app.icon);
         egui::Frame::new()
-            .fill(theme::PANEL)
+            .fill(theme::PANEL())
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
@@ -197,9 +197,9 @@ impl MixerApp {
                         ui.add_space(22.0);
                     }
                     let color = if app.active {
-                        theme::TEXT
+                        theme::TEXT()
                     } else {
-                        theme::TEXT_DIM
+                        theme::TEXT_DIM()
                     };
                     let reserve = if pill { 150.0 } else { 20.0 };
                     let name = strip::truncate(ui, &app.name, ui.available_width() - reserve, 13.0);
@@ -218,7 +218,7 @@ impl MixerApp {
                     app.volume,
                     app.muted,
                     app.peak,
-                    theme::ACCENT,
+                    theme::ACCENT(),
                 );
                 self.send_app(
                     app,
@@ -266,12 +266,12 @@ impl MixerApp {
             }
             paint_h_slider(ui, rect, id, v, muted, peak, accent);
             let pct = if muted {
-                RichText::new("muted").size(11.0).color(theme::MUTE)
+                RichText::new("muted").size(11.0).color(theme::MUTE())
             } else {
                 RichText::new(format!("{}%", crate::model::percent(v)))
                     .size(13.0)
                     .monospace()
-                    .color(theme::TEXT)
+                    .color(theme::TEXT())
             };
             ui.label(pct);
         });
@@ -293,8 +293,8 @@ fn paint_h_slider(
     use egui::{pos2, CornerRadius, Rect};
     let p = ui.painter();
     let track = Rect::from_center_size(rect.center(), vec2(rect.width() - 16.0, 8.0));
-    p.rect_filled(track, CornerRadius::same(4), theme::METER_BG);
-    let color = if muted { theme::TEXT_DIM } else { accent };
+    p.rect_filled(track, CornerRadius::same(4), theme::METER_BG());
+    let color = if muted { theme::TEXT_DIM() } else { accent };
     let knob_x = track.left() + track.width() * v;
     let fill = Rect::from_min_max(track.min, pos2(knob_x, track.bottom()));
     p.rect_filled(fill, CornerRadius::same(4), color);
@@ -320,15 +320,15 @@ fn paint_h_slider(
     p.rect_filled(
         lvl_rect,
         CornerRadius::same(1),
-        theme::METER_GREEN.linear_multiply(0.8),
+        theme::METER_GREEN().linear_multiply(0.8),
     );
 
     let knob = pos2(knob_x, track.center().y);
     p.circle_filled(
         pos2(knob.x, knob.y + 1.5),
         9.5,
-        egui::Color32::from_rgba_unmultiplied(0x6b, 0x55, 0x38, 55),
+        theme::shadow_color(55),
     );
-    p.circle_filled(knob, 9.0, theme::CARD);
+    p.circle_filled(knob, 9.0, theme::CARD());
     p.circle_stroke(knob, 9.0, egui::Stroke::new(2.0, color));
 }
