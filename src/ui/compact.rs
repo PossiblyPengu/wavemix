@@ -108,8 +108,8 @@ impl MixerApp {
         egui::Frame::new()
             .fill(theme::PANEL)
             .stroke(egui::Stroke::new(1.0, theme::BORDER))
-            .corner_radius(8)
-            .inner_margin(egui::Margin::symmetric(12, 10))
+            .corner_radius(theme::R_CARD)
+            .inner_margin(egui::Margin::symmetric(14, 12))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -178,8 +178,8 @@ impl MixerApp {
         let icon: Option<TextureHandle> = self.icon(ui.ctx(), &app.key, &app.icon);
         egui::Frame::new()
             .fill(theme::PANEL)
-            .corner_radius(8)
-            .inner_margin(egui::Margin::symmetric(10, 8))
+            .corner_radius(theme::R_CARD)
+            .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -284,12 +284,12 @@ fn paint_h_slider(
 ) {
     use egui::{pos2, CornerRadius, Rect};
     let p = ui.painter();
-    let track = Rect::from_center_size(rect.center(), vec2(rect.width() - 16.0, 6.0));
-    p.rect_filled(track, CornerRadius::same(3), theme::METER_BG);
+    let track = Rect::from_center_size(rect.center(), vec2(rect.width() - 16.0, 8.0));
+    p.rect_filled(track, CornerRadius::same(4), theme::METER_BG);
     let color = if muted { theme::TEXT_DIM } else { accent };
     let knob_x = track.left() + track.width() * v;
     let fill = Rect::from_min_max(track.min, pos2(knob_x, track.bottom()));
-    p.rect_filled(fill, CornerRadius::same(3), color);
+    p.rect_filled(fill, CornerRadius::same(4), color);
 
     // Live level: a thin bar under the track, smoothed a little so it doesn't flicker.
     let level = if muted {
@@ -306,12 +306,12 @@ fn paint_h_slider(
     };
     ui.data_mut(|d| d.insert_temp(smooth_id, shown));
     let lvl_rect = Rect::from_min_size(
-        pos2(track.left(), track.bottom() + 4.0),
+        pos2(track.left(), track.bottom() + 5.0),
         vec2(track.width() * shown, 2.0),
     );
     p.rect_filled(
         lvl_rect,
-        CornerRadius::ZERO,
+        CornerRadius::same(1),
         theme::METER_GREEN.linear_multiply(0.8),
     );
 

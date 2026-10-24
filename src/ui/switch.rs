@@ -59,28 +59,56 @@ impl MixerApp {
     /// The small card offered at the top of the window when Voicemeeter is installed.
     pub(super) fn switch_banner(&mut self, ui: &mut Ui) {
         egui::Frame::new()
-            .fill(theme::PANEL)
-            .stroke(egui::Stroke::new(1.0, theme::ACCENT))
-            .corner_radius(8)
-            .inner_margin(egui::Margin::symmetric(12, 8))
+            .fill(egui::Color32::from_rgb(0x2d, 0x24, 0x14))
+            .stroke(egui::Stroke::new(1.0, theme::ACCENT.linear_multiply(0.35)))
+            .corner_radius(theme::R_CARD)
+            .inner_margin(egui::Margin::symmetric(16, 12))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new("Using Voicemeeter?").strong());
-                ui.label(
-                    RichText::new("Bring your setup over to wavemix in one click.")
-                        .size(12.0)
-                        .color(theme::TEXT_DIM),
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("Switch over").clicked() {
+                // Side by side when there's room (Pro), stacked in the narrow Simple window.
+                let wide = ui.available_width() > 460.0;
+                let mut buttons = |ui: &mut Ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    let go = super::strip::toggle(
+                        ui,
+                        "Switch over",
+                        true,
+                        egui::vec2(104.0, 30.0),
+                        theme::ACCENT,
+                    )
+                    .clicked();
+                    let later = super::strip::ghost_button(ui, "Not now", false).clicked();
+                    if go {
                         self.switch.open = true;
                         self.show_settings = false;
                     }
-                    if ui.small_button("Not now").clicked() {
+                    if later {
                         self.config.voicemeeter_offer = false;
                         self.config.save();
                     }
-                });
+                };
+                let text = |ui: &mut Ui| {
+                    ui.label(RichText::new("Using Voicemeeter?").strong());
+                    ui.label(
+                        RichText::new("Bring your setup over to wavemix in one click.")
+                            .size(12.0)
+                            .color(theme::TEXT_DIM),
+                    );
+                };
+                if wide {
+                    ui.horizontal(|ui| {
+                        ui.vertical(text);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // Right-to-left reverses the order, so this reads Switch over, Not now.
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            buttons(ui);
+                        });
+                    });
+                } else {
+                    text(ui);
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| buttons(ui));
+                }
             });
         ui.add_space(8.0);
     }

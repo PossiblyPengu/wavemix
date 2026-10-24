@@ -30,20 +30,27 @@ fn db_meter_color(db: f32) -> Color32 {
 }
 
 /// Fill a meter column up to `level_db`, on the same -60..+12 dB axis as the fader beside it, so
-/// the bar lines up with the scale labels.
+/// the bar lines up with the scale labels. The column is a capsule, so its ends are rounded.
 fn draw_db_meter(painter: &Painter, rect: Rect, level_db: f32, dim: bool) {
-    let shade = if dim { 0.5 } else { 1.0 };
+    let shade = if dim { 0.45 } else { 1.0 };
     let y_of = |db: f32| rect.bottom() - rect.height() * db_to_frac(db);
-    for (lo, hi) in [(GAIN_MIN_DB, -18.0), (-18.0, -6.0), (-6.0, GAIN_MAX_DB)] {
+    let r = (rect.width() / 2.0).round().min(255.0) as u8;
+    let bands = [(GAIN_MIN_DB, -18.0), (-18.0, -6.0), (-6.0, GAIN_MAX_DB)];
+    for (n, (lo, hi)) in bands.into_iter().enumerate() {
         if level_db <= lo {
             break;
         }
+        let top = level_db.min(hi);
+        let is_top = level_db <= hi;
+        let radius = CornerRadius {
+            nw: if is_top { r } else { 0 },
+            ne: if is_top { r } else { 0 },
+            sw: if n == 0 { r } else { 0 },
+            se: if n == 0 { r } else { 0 },
+        };
         painter.rect_filled(
-            Rect::from_min_max(
-                pos2(rect.left(), y_of(level_db.min(hi))),
-                pos2(rect.right(), y_of(lo)),
-            ),
-            CornerRadius::ZERO,
+            Rect::from_min_max(pos2(rect.left(), y_of(top)), pos2(rect.right(), y_of(lo))),
+            radius,
             db_meter_color(lo + 0.01).linear_multiply(shade),
         );
     }
@@ -98,7 +105,7 @@ pub fn speaker_icon(painter: &Painter, center: Pos2, size: f32, muted: bool, col
     }
 }
 
-/// A mute toggle: a red filled button with a crossed speaker when muted, dim otherwise.
+/// A mute toggle: a red filled pill with a crossed speaker when muted, a quiet one otherwise.
 pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let fill = if muted {
@@ -109,43 +116,40 @@ pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
         theme::PANEL_HI
     };
     let fg = if muted { Color32::WHITE } else { theme::TEXT_DIM };
-    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-    ui.painter().rect_stroke(
-        rect,
-        CornerRadius::same(4),
-        Stroke::new(1.0, if muted { theme::MUTE } else { theme::BORDER }),
-        StrokeKind::Inside,
-    );
-    speaker_icon(ui.painter(), rect.center(), size.y * 0.7, muted, fg);
+    ui.painter().rect_filled(rect, theme::pill(size.y), fill);
+    speaker_icon(ui.painter(), rect.center(), size.y * 0.66, muted, fg);
     resp.on_hover_text(if muted { "Unmute" } else { "Mute" })
 }
 
 /// A pill showing a name with a small drop-down arrow. Clicking it is how you pick a device.
 pub fn chip(ui: &mut Ui, text: &str, width: f32, accent: bool) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 24.0), Sense::click());
+    const H: f32 = 28.0;
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, H), Sense::click());
     let fill = if resp.hovered() || resp.is_pointer_button_down_on() {
         theme::HOVER
     } else {
         theme::PANEL_HI
     };
-    let border = if accent { theme::ACCENT } else { theme::BORDER };
-    ui.painter().rect_filled(rect, CornerRadius::same(10), fill);
-    ui.painter().rect_stroke(
-        rect,
-        CornerRadius::same(10),
-        Stroke::new(1.0, border),
-        StrokeKind::Inside,
-    );
-    let label = truncate(ui, text, width - 26.0, 11.0);
+    ui.painter().rect_filled(rect, theme::pill(H), fill);
+    if accent {
+        // A soft amber ring marks a slot that has something assigned.
+        ui.painter().rect_stroke(
+            rect,
+            theme::pill(H),
+            Stroke::new(1.0, theme::ACCENT.linear_multiply(0.55)),
+            StrokeKind::Inside,
+        );
+    }
+    let label = truncate(ui, text, width - 36.0, 11.5);
     ui.painter().text(
-        pos2(rect.left() + 9.0, rect.center().y),
+        pos2(rect.left() + 13.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         label,
-        FontId::proportional(11.0),
+        FontId::proportional(11.5),
         theme::TEXT,
     );
     // Down arrow.
-    let a = pos2(rect.right() - 12.0, rect.center().y);
+    let a = pos2(rect.right() - 14.0, rect.center().y);
     ui.painter().add(Shape::convex_polygon(
         vec![
             pos2(a.x - 3.5, a.y - 2.0),
@@ -289,8 +293,8 @@ pub fn db_fader(
         }
     }
 
-    // Track and fill.
-    let track = Rect::from_min_max(pos2(track_x - 3.0, top), pos2(track_x + 3.0, bottom));
+    // Track and fill: a slim capsule, filled from the bottom up to the knob.
+    let track = Rect::from_min_max(pos2(track_x - 4.0, top), pos2(track_x + 4.0, bottom));
     let hit = Rect::from_min_max(
         pos2(rect.left() + 56.0, rect.top()),
         pos2(rect.right(), rect.bottom()),
@@ -318,54 +322,44 @@ pub fn db_fader(
     let resp = resp.on_hover_text("Drag or scroll to change. Double-click for 0 dB (unity).");
 
     let painter = ui.painter();
-    painter.rect_filled(track, CornerRadius::same(3), theme::METER_BG);
-    painter.rect_stroke(
-        track,
-        CornerRadius::same(3),
-        Stroke::new(1.0, theme::BORDER),
-        StrokeKind::Inside,
-    );
+    painter.rect_filled(track, CornerRadius::same(4), theme::METER_BG);
     let fill_top = y_of(db);
     painter.rect_filled(
         Rect::from_min_max(pos2(track.left(), fill_top), track.max),
-        CornerRadius::same(3),
-        accent.linear_multiply(0.55),
-    );
-    // Unity marker across the track.
-    painter.line_segment(
-        [
-            pos2(track_x - 9.0, y_of(0.0)),
-            pos2(track_x + 9.0, y_of(0.0)),
-        ],
-        Stroke::new(1.0, theme::TEXT_DIM),
-    );
-    let knob = Rect::from_center_size(pos2(track_x, fill_top), vec2(30.0, 17.0));
-    let knob_fill = if resp.dragged() {
-        Color32::from_rgb(0x4e, 0x42, 0x2e)
-    } else if resp.hovered() {
-        Color32::from_rgb(0x3e, 0x34, 0x26)
-    } else {
-        Color32::from_rgb(0x30, 0x28, 0x1e)
-    };
-    painter.rect_filled(knob, CornerRadius::same(4), knob_fill);
-    painter.rect_stroke(
-        knob,
         CornerRadius::same(4),
-        Stroke::new(1.0, accent),
-        StrokeKind::Inside,
+        accent.linear_multiply(if dim { 0.25 } else { 0.6 }),
     );
-    painter.line_segment(
-        [
-            pos2(knob.left() + 5.0, knob.center().y),
-            pos2(knob.right() - 5.0, knob.center().y),
-        ],
-        Stroke::new(2.0, accent),
+    // Unity marker: a small notch on the track.
+    painter.circle_filled(pos2(track_x + 11.0, y_of(0.0)), 1.8, theme::TEXT_DIM);
+    painter.circle_filled(pos2(track_x - 11.0, y_of(0.0)), 1.8, theme::TEXT_DIM);
+
+    // Round knob with a soft drop shadow and a ring in the strip's colour.
+    let centre = pos2(track_x, fill_top);
+    let lift = if resp.dragged() { 1.5 } else { 0.0 };
+    painter.circle_filled(
+        pos2(centre.x, centre.y + 2.5),
+        13.0 + lift,
+        Color32::from_black_alpha(70),
     );
+    let knob_fill = if resp.dragged() {
+        theme::ACTIVE
+    } else if resp.hovered() {
+        theme::HOVER
+    } else {
+        theme::PANEL_HI
+    };
+    painter.circle_filled(centre, 12.0 + lift, knob_fill);
+    painter.circle_stroke(
+        centre,
+        12.0 + lift,
+        Stroke::new(2.0, accent.linear_multiply(if dim { 0.5 } else { 1.0 })),
+    );
+    painter.circle_filled(centre, 3.0, accent);
 
     ((db - gain_db).abs() > f32::EPSILON).then_some(db)
 }
 
-/// A small latching button with a text label: filled in `color` when on.
+/// A small latching pill with a text label: filled in `color` when on.
 pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let fill = if on {
@@ -375,18 +369,32 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
     } else {
         theme::PANEL_HI
     };
-    let fg = if on {
-        Color32::from_rgb(0x12, 0x0e, 0x08)
-    } else {
-        theme::TEXT_DIM
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-    ui.painter().rect_stroke(
-        rect,
-        CornerRadius::same(4),
-        Stroke::new(1.0, if on { color.linear_multiply(0.7) } else { theme::BORDER }),
-        StrokeKind::Inside,
+    let fg = if on { theme::ON_ACCENT } else { theme::TEXT_DIM };
+    ui.painter().rect_filled(rect, theme::pill(size.y), fill);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        FontId::proportional(11.5),
+        fg,
     );
+    resp
+}
+
+/// A processor button (EQ, gate, compressor). Amber text on a tint means the processor is
+/// working; a solid amber pill means its editor is open.
+pub fn process_button(ui: &mut Ui, text: &str, on: bool, open: bool, size: egui::Vec2) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let (fill, fg) = if open {
+        (theme::ACCENT, theme::ON_ACCENT)
+    } else if on {
+        (theme::ACCENT.linear_multiply(0.22), theme::ACCENT)
+    } else if resp.hovered() {
+        (theme::HOVER, theme::TEXT_DIM)
+    } else {
+        (theme::PANEL_HI, theme::TEXT_DIM)
+    };
+    ui.painter().rect_filled(rect, theme::pill(size.y), fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -397,46 +405,94 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
     resp
 }
 
-/// Like [`toggle`], with a small LED showing whether a processor is enabled.
-pub fn led_button(ui: &mut Ui, text: &str, on: bool, selected: bool, size: egui::Vec2) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    let fill = if selected {
-        Color32::from_rgb(0x48, 0x38, 0x14)  // warm amber-brown selected state
+/// A read-only pill of text, for status read-outs.
+pub fn stat_chip(ui: &mut Ui, text: &str, color: Color32) -> Response {
+    let font = FontId::proportional(11.5);
+    let w = ui
+        .painter()
+        .layout_no_wrap(text.to_string(), font.clone(), color)
+        .size()
+        .x;
+    let (rect, resp) = ui.allocate_exact_size(vec2(w + 22.0, 24.0), Sense::hover());
+    ui.painter()
+        .rect_filled(rect, theme::pill(24.0), theme::PANEL_HI.linear_multiply(0.7));
+    ui.painter()
+        .text(rect.center(), egui::Align2::CENTER_CENTER, text, font, color);
+    resp
+}
+
+/// A quiet pill button with no fill until hovered or active, for secondary actions.
+pub fn ghost_button(ui: &mut Ui, text: &str, active: bool) -> Response {
+    let font = FontId::proportional(13.0);
+    let w = ui
+        .painter()
+        .layout_no_wrap(text.to_string(), font.clone(), theme::TEXT)
+        .size()
+        .x;
+    let (rect, resp) = ui.allocate_exact_size(vec2(w + 26.0, 30.0), Sense::click());
+    if active {
+        ui.painter().rect_filled(rect, theme::pill(30.0), theme::ACTIVE);
     } else if resp.hovered() {
-        theme::HOVER
-    } else {
-        theme::PANEL_HI
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-    ui.painter().rect_stroke(
-        rect,
-        CornerRadius::same(4),
-        Stroke::new(
-            1.0,
-            if selected { theme::ACCENT.linear_multiply(0.6) } else { theme::BORDER },
-        ),
-        StrokeKind::Inside,
-    );
-    let led = pos2(rect.left() + 8.0, rect.center().y);
-    if on {
-        ui.painter().circle_filled(led, 3.0, theme::METER_GREEN);
-    } else {
-        ui.painter()
-            .circle_stroke(led, 2.6, Stroke::new(1.0, theme::TEXT_DIM));
+        ui.painter().rect_filled(rect, theme::pill(30.0), theme::PANEL_HI);
     }
     ui.painter().text(
-        pos2(rect.center().x + 5.0, rect.center().y),
+        rect.center(),
         egui::Align2::CENTER_CENTER,
         text,
-        FontId::proportional(10.5),
-        if on { theme::TEXT } else { theme::TEXT_DIM },
+        font,
+        if active || resp.hovered() { theme::TEXT } else { theme::TEXT_DIM },
     );
     resp
 }
 
+/// A capsule holding mutually exclusive options, the chosen one raised in amber. Returns the index
+/// the user clicked.
+pub fn segmented(ui: &mut Ui, id: Id, labels: &[(&str, &str)], selected: usize) -> Option<usize> {
+    const SEG_W: f32 = 66.0;
+    const H: f32 = 34.0;
+    let n = labels.len();
+    let (rect, _) = ui.allocate_exact_size(vec2(SEG_W * n as f32 + 8.0, H), Sense::hover());
+    ui.painter().rect_filled(rect, theme::pill(H), theme::PANEL);
+    let mut clicked = None;
+    for (i, (label, tip)) in labels.iter().enumerate() {
+        let seg = Rect::from_min_size(
+            rect.min + vec2(4.0 + i as f32 * SEG_W, 4.0),
+            vec2(SEG_W, H - 8.0),
+        );
+        let resp = ui.interact(seg, id.with(i), Sense::click()).on_hover_text(*tip);
+        let on = i == selected;
+        if on {
+            ui.painter().rect_filled(seg, theme::pill(H - 8.0), theme::ACCENT);
+        } else if resp.hovered() {
+            ui.painter().rect_filled(seg, theme::pill(H - 8.0), theme::PANEL_HI);
+        }
+        ui.painter().text(
+            seg.center(),
+            egui::Align2::CENTER_CENTER,
+            *label,
+            FontId::proportional(13.0),
+            if on { theme::ON_ACCENT } else { theme::TEXT_DIM },
+        );
+        if resp.clicked() {
+            clicked = Some(i);
+        }
+    }
+    clicked
+}
+
+/// A small dim heading above a group of controls.
+pub fn caption(ui: &mut Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .size(9.5)
+            .strong()
+            .color(theme::TEXT_DIM.linear_multiply(0.85)),
+    );
+}
+
 /// Horizontal balance slider with a centre notch. Double-click recentres. Returns the new value.
 pub fn balance(ui: &mut Ui, id: Id, pan: f32, width: f32) -> Option<f32> {
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 18.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 20.0), Sense::hover());
     let resp = ui.interact(rect, id, Sense::click_and_drag());
     let mut v = pan;
     if let Some(p) = resp.interact_pointer_pos() {
@@ -451,17 +507,13 @@ pub fn balance(ui: &mut Ui, id: Id, pan: f32, width: f32) -> Option<f32> {
         v = 0.0;
     }
     let painter = ui.painter();
-    let track = Rect::from_center_size(rect.center(), vec2(rect.width() - 10.0, 4.0));
-    painter.rect_filled(track, CornerRadius::same(2), theme::METER_BG);
-    painter.line_segment(
-        [
-            pos2(rect.center().x, rect.center().y - 5.0),
-            pos2(rect.center().x, rect.center().y + 5.0),
-        ],
-        Stroke::new(1.0, theme::TEXT_DIM),
-    );
+    let track = Rect::from_center_size(rect.center(), vec2(rect.width() - 16.0, 6.0));
+    painter.rect_filled(track, CornerRadius::same(3), theme::METER_BG);
+    painter.circle_filled(rect.center(), 1.8, theme::TEXT_DIM);
     let x = rect.center().x + v * (track.width() / 2.0);
-    painter.circle_filled(pos2(x, rect.center().y), 6.0, theme::TEXT);
+    let c = pos2(x, rect.center().y);
+    painter.circle_filled(pos2(c.x, c.y + 1.5), 8.5, Color32::from_black_alpha(60));
+    painter.circle_filled(c, 8.0, theme::TEXT);
     resp.on_hover_text("Balance. Double-click to centre.");
     ((v - pan).abs() > f32::EPSILON).then_some(v)
 }

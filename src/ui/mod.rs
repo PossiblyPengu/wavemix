@@ -24,7 +24,7 @@ mod theme;
 use strip::StripOutput;
 
 /// Pro mode: the full console.
-const PRO_SIZE: [f32; 2] = [1360.0, 840.0];
+const PRO_SIZE: [f32; 2] = [1440.0, 860.0];
 /// Simple mode: a small volume control.
 const SIMPLE_SIZE: [f32; 2] = [370.0, 560.0];
 /// The flyout is as tall as its content, within these limits (points).
@@ -324,39 +324,25 @@ impl MixerApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let ctx = ui.ctx().clone();
-                if ui
-                    .selectable_label(self.show_settings, "Settings")
-                    .clicked()
-                {
+                if strip::ghost_button(ui, "Settings", self.show_settings).clicked() {
                     self.show_settings = !self.show_settings;
                 }
                 if pro {
                     self.presets_menu(ui, snap);
                 }
-                ui.add_space(4.0);
-                ui.separator();
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 // Reads left to right as: Simple | Pro.
-                for (view, label, tip) in [
-                    (
-                        View::Console,
-                        "Pro",
-                        "Mixing console: inputs, buses, EQ, gate and compressor",
-                    ),
-                    (
-                        View::Compact,
-                        "Simple",
-                        "A small volume control, like the Windows volume popup",
-                    ),
-                ] {
-                    let selected = self.config.view == view;
-                    if ui
-                        .selectable_label(selected, label)
-                        .on_hover_text(tip)
-                        .clicked()
-                    {
-                        self.set_view(&ctx, view);
-                    }
+                let selected = usize::from(pro);
+                if let Some(i) = strip::segmented(
+                    ui,
+                    wid("view-switch"),
+                    &[
+                        ("Simple", "A small volume control, like the Windows volume popup"),
+                        ("Pro", "Mixing console: inputs, buses, EQ, gate and compressor"),
+                    ],
+                    selected,
+                ) {
+                    self.set_view(&ctx, if i == 1 { View::Console } else { View::Compact });
                 }
             });
         });
