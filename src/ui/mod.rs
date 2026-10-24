@@ -18,6 +18,7 @@ mod settings;
 #[cfg(windows)]
 mod shell;
 mod strip;
+mod switch;
 mod theme;
 
 use strip::StripOutput;
@@ -54,6 +55,9 @@ pub struct MixerApp {
     /// App icons uploaded as textures, by app key. Filled lazily while drawing.
     icons: RefCell<HashMap<String, TextureHandle>>,
     show_settings: bool,
+    /// Voicemeeter is installed, so offer to switch over.
+    vm_installed: bool,
+    switch: switch::SwitchState,
     preset_name: String,
     /// Hotkey text being edited in settings; applied with the Apply button.
     #[cfg(windows)]
@@ -121,6 +125,16 @@ impl MixerApp {
             icons: RefCell::default(),
             // `--settings` opens the settings window on launch.
             show_settings: std::env::args().any(|a| a == "--settings"),
+            // Off Windows (the demo) pretend it is installed, so the flow can be tried.
+            #[cfg(windows)]
+            vm_installed: crate::voicemeeter::remote::installed(),
+            #[cfg(not(windows))]
+            vm_installed: true,
+            switch: switch::SwitchState {
+                // `--switch` opens the switch page on launch.
+                open: std::env::args().any(|a| a == "--switch"),
+                ..Default::default()
+            },
             preset_name: String::new(),
             #[cfg(windows)]
             hk_edit,
@@ -377,6 +391,9 @@ impl eframe::App for MixerApp {
                 ui.set_min_size(ui.available_size());
                 self.top_bar(ui, &snap);
                 ui.add_space(8.0);
+                if self.offer_switch() {
+                    self.switch_banner(ui);
+                }
                 match self.view() {
                     View::Console if self.config.pro_apps_panel => {
                         let avail = ui.available_size();
@@ -393,6 +410,7 @@ impl eframe::App for MixerApp {
                         });
                     }
                     View::Console => self.console(ui),
+                    View::Compact if self.switch.open => self.switch_inline(ui),
                     View::Compact if self.show_settings => self.settings_inline(ui),
                     View::Compact => self.compact(ui, &snap),
                 }
@@ -403,6 +421,7 @@ impl eframe::App for MixerApp {
             self.request(ui.ctx(), shell::Request::Hide);
         }
         self.settings_window(ui.ctx());
+        self.switch_window(ui.ctx());
         self.flush_engine_config(ui.ctx());
         if self.view() == View::Console {
             // Meters move constantly.

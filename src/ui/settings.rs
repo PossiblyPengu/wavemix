@@ -219,6 +219,17 @@ impl MixerApp {
             }
         }
 
+        section(ui, "Switching from Voicemeeter");
+        hint(
+            ui,
+            "Bring your Voicemeeter strips, buses and devices over, and point Windows at your real \
+             devices so nothing goes quiet when Voicemeeter closes.",
+        );
+        if ui.button("Switch from Voicemeeter...").clicked() {
+            self.switch.open = true;
+            self.show_settings = false;
+        }
+
         section(ui, "Presets");
         hint(
             ui,

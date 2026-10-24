@@ -73,6 +73,33 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
 Hotkeys that drive bus A1 instead of the Windows volume, macro buttons, a parametric EQ with more
 bands, bus EQ, ASIO/WDM-exclusive devices for lower latency, and recording.
 
+## Switching from Voicemeeter
+
+If Voicemeeter is installed, wavemix offers to bring your setup over (also in Settings > Switching
+from Voicemeeter). With Voicemeeter running, it reads your strips and buses through Voicemeeter's
+own Remote API and translates them: gain, mute, solo, mono, balance, A/B routing, bass/mid/treble,
+compressor and gate (approximated from Voicemeeter's knobs), and the hardware devices you picked.
+Standard, Banana and Potato are all understood. Bus EQ, delays and macros are not imported, and
+anything that doesn't fit wavemix's 3 + 2 inputs and A1-A3 / B1-B2 buses is listed rather than
+dropped silently.
+
+It then moves Windows over so nothing goes quiet: if the default playback or recording device is
+one of Voicemeeter's virtual ones, it is changed to your real speakers / a virtual cable / your
+microphone *before* Voicemeeter is closed. Optionally it also stops Voicemeeter starting with
+Windows and starts wavemix instead. Every step is a checkbox.
+
+One thing can't be translated: Voicemeeter's own virtual inputs (VAIO) can't be captured by other
+programs, so apps you sent into them need a virtual cable (VB-Cable) instead.
+
+## Levels
+
+Meters read Windows' own level meters (apps and devices) in Simple mode, and the mixer's own
+signal in Pro mode. Pro's strips only see audio routed into them, so a "System audio" input
+(capturing everything a playback device is playing) is offered in every input's device menu and
+set up on Virtual 2 by default, with no sends. If meters sit at zero, run `wavemix.exe --dump`
+while audio is playing: it writes the highest level seen on every device and app to
+`%TEMP%\wavemix-dump.txt`.
+
 ## Install
 
 Run `wavemix-setup-<version>.exe`. It installs just for you (no administrator rights) into

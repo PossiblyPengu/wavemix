@@ -104,6 +104,8 @@ pub struct Config {
     pub osd_timeout_ms: u32,
     /// Draw the OSD in the Windows accent colour.
     pub osd_accent_system: bool,
+    /// Offer to bring a Voicemeeter setup over, until the user does or says no.
+    pub voicemeeter_offer: bool,
 }
 
 impl Default for Config {
@@ -125,6 +127,7 @@ impl Default for Config {
             osd_y: 0,
             osd_timeout_ms: 1500,
             osd_accent_system: true,
+            voicemeeter_offer: true,
         }
     }
 }

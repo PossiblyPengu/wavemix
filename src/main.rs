@@ -13,6 +13,7 @@ mod startup;
 #[cfg(windows)]
 mod tray;
 mod ui;
+mod voicemeeter;
 
 use config::Config;
 use ui::MixerApp;
