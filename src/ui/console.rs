@@ -40,7 +40,7 @@ const BUS_COLORS: [Color32; BUSES] = [
 
 /// Height of an input strip's controls (everything except the fader), plus the panel's own
 /// title row and padding. The fader takes whatever the window has left.
-const STRIP_CHROME_H: f32 = 312.0;
+const STRIP_CHROME_H: f32 = 232.0;
 const PANEL_CHROME_H: f32 = 64.0;
 const MIN_FADER_H: f32 = 150.0;
 const MAX_FADER_H: f32 = 460.0;
@@ -776,29 +776,82 @@ impl MixerApp {
                         .color(theme::TEXT),
                 );
             });
-            if let Some(v) =
-                strip::balance(ui, super::wid(("pan", i)), p.pan, CONSOLE_STRIP_W - 8.0)
-            {
-                p.pan = v;
-            }
-
             ui.add_space(4.0);
-            // Mix: the three things you reach for most, with room to hit them.
+            // Face of the strip: only what you reach for constantly. Everything else is one
+            // click away, under "Route" and "Tune".
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if strip::toggle(ui, "M", p.mute, vec2(34.0, 28.0), theme::MUTE)
+                ui.spacing_mut().item_spacing.x = 6.0;
+                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE)
                     .on_hover_text("Mute")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "S", p.solo, vec2(34.0, 28.0), theme::METER_YELLOW)
+                if strip::toggle(ui, "Solo", p.solo, vec2(53.0, 28.0), theme::METER_YELLOW)
                     .on_hover_text("Solo: hear only soloed strips")
                     .clicked()
                 {
                     p.solo = !p.solo;
                 }
-                if strip::toggle(ui, "Mono", p.mono, vec2(40.0, 28.0), theme::ACCENT)
+            });
+
+            // Where this strip goes (and its pan and mono), in a menu.
+            let sends: Vec<&str> = (0..BUSES).filter(|b| p.sends[*b]).map(bus_name).collect();
+            let summary = match sends.len() {
+                0 => "Sends nowhere".to_string(),
+                1..=3 => format!("To {}", sends.join(" ")),
+                n => format!("To {n} buses"),
+            };
+            let route = strip::chip(ui, &summary, CONSOLE_STRIP_W - 4.0, false)
+                .on_hover_text("Choose which buses this strip feeds, plus pan and mono");
+            egui::Popup::menu(&route).show(|ui| {
+                ui.set_min_width(210.0);
+                ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+                strip::caption(ui, "SEND TO");
+                ui.horizontal_wrapped(|ui| {
+                    for (b, bus_color) in BUS_COLORS.iter().copied().enumerate() {
+                        // A strip that listens to a cable can't also feed the bus playing into it.
+                        let loops = match (
+                            &self.config.engine.io.inputs[i],
+                            &self.config.engine.io.outputs[b],
+                        ) {
+                            (Some(inp), Some(out)) => feeds_itself(inp, out),
+                            _ => false,
+                        };
+                        let (color, tip) = if loops && p.sends[b] {
+                            (
+                                theme::MUTE,
+                                format!(
+                                    "Feedback loop! This strip listens to the cable {} plays into. Turn this send off.",
+                                    bus_name(b)
+                                ),
+                            )
+                        } else if loops {
+                            (
+                                bus_color,
+                                format!(
+                                    "Would cause a feedback loop: this strip listens to the cable {} plays into.",
+                                    bus_name(b)
+                                ),
+                            )
+                        } else {
+                            (bus_color, format!("Send to {}", bus_name(b)))
+                        };
+                        if strip::toggle(ui, bus_name(b), p.sends[b], vec2(38.0, 28.0), color)
+                            .on_hover_text(tip)
+                            .clicked()
+                        {
+                            p.sends[b] = !p.sends[b];
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+                strip::caption(ui, "PAN");
+                if let Some(v) = strip::balance(ui, super::wid(("pan", i)), p.pan, 200.0) {
+                    p.pan = v;
+                }
+                ui.add_space(2.0);
+                if strip::toggle(ui, "Mono", p.mono, vec2(64.0, 28.0), theme::ACCENT)
                     .on_hover_text("Mix left and right into one")
                     .clicked()
                 {
@@ -806,79 +859,15 @@ impl MixerApp {
                 }
             });
 
-            // Which buses this strip feeds: hardware outputs on one row, virtual on the next.
-            ui.add_space(6.0);
-            strip::caption(ui, "SEND TO");
-            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
-            ui.horizontal_wrapped(|ui| {
-                for (b, bus_color) in BUS_COLORS.iter().copied().enumerate() {
-                    // A strip that listens to a cable can't also feed the bus playing into it.
-                    let loops = match (
-                        &self.config.engine.io.inputs[i],
-                        &self.config.engine.io.outputs[b],
-                    ) {
-                        (Some(inp), Some(out)) => feeds_itself(inp, out),
-                        _ => false,
-                    };
-                    let (color, tip) = if loops && p.sends[b] {
-                        (
-                            theme::MUTE,
-                            format!(
-                                "Feedback loop! This strip listens to the cable {} plays into. Turn this send off.",
-                                bus_name(b)
-                            ),
-                        )
-                    } else if loops {
-                        (
-                            bus_color,
-                            format!(
-                                "Would cause a feedback loop: this strip listens to the cable {} plays into.",
-                                bus_name(b)
-                            ),
-                        )
-                    } else {
-                        (bus_color, format!("Send to {}", bus_name(b)))
-                    };
-                    if strip::toggle(ui, bus_name(b), p.sends[b], vec2(36.0, 26.0), color)
-                        .on_hover_text(tip)
-                        .clicked()
-                    {
-                        p.sends[b] = !p.sends[b];
-                    }
-                }
-            });
-
-            // Processing. Clicking opens the editor on that tab; amber text shows it's working.
-            ui.add_space(6.0);
-            strip::caption(ui, "PROCESS");
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let mut want: Option<EditorTab> = None;
-                for (tab, label, on) in [
-                    (EditorTab::Eq, "EQ", p.eq.enabled),
-                    (EditorTab::Gate, "Gate", p.gate.enabled),
-                    (EditorTab::Comp, "Comp", p.comp.enabled),
-                ] {
-                    let open = self.editing == Some((i, tab));
-                    if strip::process_button(ui, label, on, open, vec2(36.0, 26.0))
-                        .on_hover_text(match tab {
-                            EditorTab::Eq => "Three-band equaliser",
-                            EditorTab::Gate => "Noise gate",
-                            EditorTab::Comp => "Compressor",
-                        })
-                        .clicked()
-                    {
-                        want = Some(tab);
-                    }
-                }
-                if let Some(tab) = want {
-                    self.editing = if self.editing == Some((i, tab)) {
-                        None
-                    } else {
-                        Some((i, tab))
-                    };
-                }
-            });
+            // EQ, gate and compressor share one editor with tabs.
+            let working = p.eq.enabled || p.gate.enabled || p.comp.enabled;
+            let open = matches!(self.editing, Some((n, _)) if n == i);
+            if strip::process_button(ui, "Tune", working, open, vec2(CONSOLE_STRIP_W - 4.0, 28.0))
+                .on_hover_text("EQ, noise gate and compressor")
+                .clicked()
+            {
+                self.editing = if open { None } else { Some((i, EditorTab::Eq)) };
+            }
         });
     }
 
@@ -943,31 +932,39 @@ impl MixerApp {
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if strip::toggle(ui, "M", p.mute, vec2(40.0, 28.0), theme::MUTE)
+                ui.spacing_mut().item_spacing.x = 6.0;
+                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE)
                     .on_hover_text("Mute this bus")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Limit", p.limiter, vec2(68.0, 28.0), theme::METER_GREEN)
+                if strip::toggle(ui, "Limit", p.limiter, vec2(53.0, 28.0), theme::METER_GREEN)
                     .on_hover_text("Limiter: stops the summed mix from clipping")
                     .clicked()
                 {
                     p.limiter = !p.limiter;
                 }
             });
-            ui.add_space(6.0);
-            strip::caption(ui, "DELAY");
-            ui.add(
-                egui::DragValue::new(&mut p.delay_ms)
-                    .range(0.0..=crate::engine::mixer::MAX_BUS_DELAY_MS)
-                    .speed(1.0)
-                    .suffix(" ms"),
-            )
-            .on_hover_text(
-                "Hold this output back so it lines up with a slower one, for example wired speakers waiting for Bluetooth headphones",
-            );
+            let delay_text = if p.delay_ms > 0.0 {
+                format!("Delay {:.0} ms", p.delay_ms)
+            } else {
+                "No delay".to_string()
+            };
+            let delay = strip::chip(ui, &delay_text, CONSOLE_STRIP_W - 4.0, p.delay_ms > 0.0)
+                .on_hover_text(
+                    "Hold this output back so it lines up with a slower one, for example wired speakers waiting for Bluetooth headphones",
+                );
+            egui::Popup::menu(&delay).show(|ui| {
+                ui.set_min_width(160.0);
+                strip::caption(ui, "DELAY");
+                ui.add(
+                    egui::DragValue::new(&mut p.delay_ms)
+                        .range(0.0..=crate::engine::mixer::MAX_BUS_DELAY_MS)
+                        .speed(1.0)
+                        .suffix(" ms"),
+                );
+            });
         });
     }
 

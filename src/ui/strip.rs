@@ -213,7 +213,7 @@ use crate::engine::params::{GAIN_MAX_DB, GAIN_MIN_DB};
 
 /// Width of a mixer-console strip.
 pub const CONSOLE_STRIP_W: f32 = 116.0;
-const DB_TICKS: [f32; 7] = [12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0];
+const DB_TICKS: [f32; 5] = [12.0, 0.0, -12.0, -24.0, -48.0];
 
 fn db_to_frac(db: f32) -> f32 {
     ((db - GAIN_MIN_DB) / (GAIN_MAX_DB - GAIN_MIN_DB)).clamp(0.0, 1.0)
