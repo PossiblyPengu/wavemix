@@ -92,7 +92,9 @@ struct SessionHandle {
 }
 
 pub struct WasapiEngine {
-    enumerator: IMMDeviceEnumerator,
+    /// `None` when Windows' audio service can't be reached; the mixer then just shows nothing
+    /// instead of taking the whole app down.
+    enumerator: Option<IMMDeviceEnumerator>,
     devices: Vec<DeviceHandle>,
     sessions: Vec<SessionHandle>,
     /// pid -> who it is, so a rescan doesn't reopen every process and re-extract its icon.
@@ -105,9 +107,8 @@ impl WasapiEngine {
         unsafe {
             // Already-initialised (S_FALSE) and changed-mode errors are both survivable.
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let enumerator: IMMDeviceEnumerator =
-                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
-                    .expect("create the audio device enumerator");
+            let enumerator: Option<IMMDeviceEnumerator> =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok();
             Self {
                 enumerator,
                 devices: Vec::new(),
@@ -118,12 +119,22 @@ impl WasapiEngine {
     }
 
     fn rescan(&mut self) {
+        // The audio service may start (or restart) after us; keep trying to reach it.
+        if self.enumerator.is_none() {
+            self.enumerator =
+                unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok() };
+        }
+        let Some(enumerator) = self.enumerator.clone() else {
+            self.devices.clear();
+            self.sessions.clear();
+            return;
+        };
         let mut devices = Vec::new();
         let mut sessions = Vec::new();
         for (flow, data_flow) in [(Flow::Render, eRender), (Flow::Capture, eCapture)] {
             let default_id = self.default_id(data_flow);
             let Some(list) = (unsafe {
-                self.enumerator
+                enumerator
                     .EnumAudioEndpoints(data_flow, DEVICE_STATE_ACTIVE)
                     .ok()
             }) else {
@@ -151,6 +162,7 @@ impl WasapiEngine {
         unsafe {
             let d = self
                 .enumerator
+                .as_ref()?
                 .GetDefaultAudioEndpoint(flow, eConsole)
                 .ok()?;
             take_pwstr(d.GetId().ok()?)

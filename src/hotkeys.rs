@@ -61,7 +61,7 @@ impl Hotkeys {
         };
         let _ = manager.unregister_all(&self.registered);
         self.registered.clear();
-        let mut map = self.map.lock().expect("hotkey map lock");
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         map.clear();
 
         let mut errors = Vec::new();
