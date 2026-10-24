@@ -1,11 +1,19 @@
 ; wavemix installer. Build with:
-;   makensis -DVERSION=0.7.0 -DEXE=path\to\wavemix.exe -DOUT=wavemix-setup.exe installer/wavemix.nsi
+;   makensis -DVERSION=0.8.0 -DEXE=path\to\wavemix.exe -DOUT=wavemix-setup.exe installer/wavemix.nsi
 ;
 ; Installs for the current user only, so it needs no administrator rights and never touches
 ; Program Files.
+;
+; Running a newer installer over an older install upgrades it: the old version is uninstalled
+; silently first (so nothing from it is left behind), your settings and presets are kept, and the
+; "start with Windows" and "desktop shortcut" choices come back as you had them. Running an older
+; installer over a newer install asks first.
 
 Unicode true
 !include "MUI2.nsh"
+!include "Sections.nsh"
+!include "WordFunc.nsh"
+!insertmacro VersionCompare
 
 !ifndef VERSION
   !define VERSION "0.0.0"
@@ -29,9 +37,14 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APP} ${VERSION}"
 
+; What an existing install looks like, read before anything is shown.
+Var OldVersion
+Var OldUninstaller
+Var OldDir
+
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Install ${APP}"
-!define MUI_WELCOMEPAGE_TEXT "wavemix is a volume control and audio mixer for Windows.$\r$\n$\r$\nSimple mode rises out of the taskbar when you click its tray icon. Pro mode is a full mixing console.$\r$\n$\r$\nIt installs just for you; no administrator rights are needed."
+!define MUI_WELCOMEPAGE_TEXT "wavemix is a volume control and audio mixer for Windows.$\r$\n$\r$\nSimple mode rises out of the taskbar when you click its tray icon. Pro mode is a full mixing console.$\r$\n$\r$\nIf wavemix is already installed, this replaces it with version ${VERSION} and keeps your settings.$\r$\n$\r$\nIt installs just for you; no administrator rights are needed."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Start wavemix now"
 
@@ -50,6 +63,20 @@ BrandingText "${APP} ${VERSION}"
   Pop $0
   Sleep 400
 !macroend
+
+; Hidden step that runs first: remove the previous version completely.
+Section "-Remove the previous version" SecOld
+  StrCmp $OldUninstaller "" done
+  IfFileExists "$OldDir\uninstall.exe" 0 done
+    !insertmacro StopApp
+    ; Silent, and `_?=` makes it run in place so we can wait for it. A silent uninstall keeps the
+    ; user's settings and presets.
+    ExecWait '"$OldDir\uninstall.exe" /S _?=$OldDir'
+    ; An uninstaller running in place can't delete itself.
+    Delete "$OldDir\uninstall.exe"
+    RMDir "$OldDir"
+  done:
+SectionEnd
 
 Section "wavemix" SecMain
   SectionIn RO
@@ -82,6 +109,36 @@ Section "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\${APP}.exe"
 SectionEnd
 
+; Before anything is shown: find an existing install, refuse to downgrade by accident, and start
+; the options the way the user left them.
+Function .onInit
+  ReadRegStr $OldVersion HKCU "${UNINSTALL_KEY}" "DisplayVersion"
+  ReadRegStr $OldUninstaller HKCU "${UNINSTALL_KEY}" "UninstallString"
+  ReadRegStr $OldDir HKCU "${UNINSTALL_KEY}" "InstallLocation"
+  StrCmp $OldVersion "" first_install
+
+  ; 0 = same, 1 = this installer is newer, 2 = this installer is older.
+  ${VersionCompare} "${VERSION}" "$OldVersion" $0
+  StrCmp $0 2 0 keep_choices
+    IfSilent abort_older
+    MessageBox MB_YESNO|MB_ICONEXCLAMATION "A newer version of ${APP} ($OldVersion) is already installed.$\r$\n$\r$\nInstall the older version ${VERSION} over it?" IDYES keep_choices
+  abort_older:
+    Abort
+
+  keep_choices:
+    ; The old uninstaller is about to remove these, so note what the user had and offer the
+    ; same again rather than switching things back on (or off) behind their back.
+    ; (Labels, not relative jumps: the macros expand to several instructions.)
+    ReadRegStr $1 HKCU "${RUN_KEY}" "${APP}"
+    StrCmp $1 "" 0 had_startup
+      !insertmacro UnselectSection ${SecStartup}
+    had_startup:
+    IfFileExists "$DESKTOP\${APP}.lnk" had_desktop 0
+      !insertmacro UnselectSection ${SecDesktop}
+    had_desktop:
+  first_install:
+FunctionEnd
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The program."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecStartup} "Run quietly in the tray when you sign in to Windows."
@@ -98,8 +155,8 @@ Section "Uninstall"
   DeleteRegValue HKCU "${RUN_KEY}" "${APP}"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
 
-  ; Settings and presets live in %APPDATA%\wavemix. Keep them unless asked, so a reinstall
-  ; picks up where you left off.
+  ; Settings and presets live in %APPDATA%\wavemix. Keep them unless asked (and always when run
+  ; silently, as during an upgrade), so a reinstall picks up where you left off.
   IfSilent +3
   MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your wavemix settings and presets?" IDNO +2
   RMDir /r "$APPDATA\${APP}"
