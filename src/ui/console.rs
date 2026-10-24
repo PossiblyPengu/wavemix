@@ -372,6 +372,7 @@ impl MixerApp {
                 }
             }
         });
+        self.signal_hint(ui, routed && running);
         if next == active {
             return;
         }
@@ -389,8 +390,17 @@ impl MixerApp {
         for (b, send) in params.strips[HARDWARE_STRIPS].sends.iter_mut().take(3).enumerate() {
             *send = b < next.len();
         }
+        // A bus or strip left far down from earlier tinkering would make this look broken.
         for b in 0..next.len() {
             params.buses[b].mute = false;
+            if params.buses[b].gain_db < -12.0 {
+                params.buses[b].gain_db = 0.0;
+            }
+        }
+        let cable_strip = &mut params.strips[HARDWARE_STRIPS];
+        cable_strip.mute = false;
+        if cable_strip.gain_db < -12.0 {
+            cable_strip.gain_db = 0.0;
         }
         self.commit_params(params);
         self.config.engine.io.engine_on = true;
@@ -400,6 +410,32 @@ impl MixerApp {
                 self.route_windows_audio(&cable);
             }
         }
+    }
+
+    /// Say where the sound stops when something is playing but nothing is heard.
+    fn signal_hint(&self, ui: &mut Ui, live: bool) {
+        if !live {
+            return;
+        }
+        let snap = self.backend.snapshot();
+        let playing = snap.sessions.iter().any(|s| s.active && s.peak > 0.02);
+        if !playing {
+            return;
+        }
+        let levels = self.engine.levels();
+        let strip = levels.strip(HARDWARE_STRIPS).into_iter().fold(0.0, f32::max);
+        let bus = (0..3)
+            .flat_map(|b| levels.bus(b))
+            .fold(0.0, f32::max);
+        let msg = if strip < 1e-4 {
+            "Sound isn't reaching the mixer. In Pro, check Virtual 1 is set to CABLE Output."
+        } else if bus < 1e-4 {
+            "The mixer has the sound but its outputs are silent. In Pro, check A1-A3 aren't muted or turned down."
+        } else {
+            return;
+        };
+        ui.add_space(4.0);
+        ui.label(RichText::new(msg).size(12.0).color(theme::METER_YELLOW));
     }
 
     fn route_windows_audio(&mut self, cable: &crate::model::Device) {

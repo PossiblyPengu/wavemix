@@ -493,8 +493,9 @@ impl IoState {
         let rate = opened.rate;
         let target = (rate as u64 * self.latency_ms as u64 / 1000) as usize;
         let mut reader = RateReader::new(cons, rate as f64, ENGINE_RATE as f64, target);
-        if opened.loopback {
-            // Windows sends nothing at all while a device is silent; that is not a dropout.
+        if opened.loopback || super::io::looks_virtual(name) {
+            // Windows (and some virtual cables) send nothing at all while silent; that is not a
+            // dropout.
             reader = reader.tolerate_silence();
         }
         let _ = self.mix_tx.send(MixMsg::Feed(slot, Some(reader)));
