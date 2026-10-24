@@ -106,6 +106,9 @@ pub struct Config {
     pub osd_accent_system: bool,
     /// Offer to bring a Voicemeeter setup over, until the user does or says no.
     pub voicemeeter_offer: bool,
+    /// Windows' default playback device from before "Route Windows audio" moved it to a virtual
+    /// cable, so it can be put back.
+    pub restore_playback: Option<String>,
 }
 
 impl Default for Config {
@@ -128,6 +131,7 @@ impl Default for Config {
             osd_timeout_ms: 1500,
             osd_accent_system: true,
             voicemeeter_offer: true,
+            restore_playback: None,
         }
     }
 }

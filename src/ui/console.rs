@@ -175,6 +175,9 @@ impl MixerApp {
                     {
                         self.engine.set_running(!running);
                         self.config.engine.io.engine_on = !running;
+                        if running {
+                            self.unroute_windows_audio();
+                        }
                         self.mark_engine_dirty();
                     }
                     ui.add_space(8.0);
@@ -210,6 +213,10 @@ impl MixerApp {
                         .on_hover_text(
                             "Audio glitched. If the count keeps climbing, pick a safer latency.",
                         );
+                    }
+                    if running {
+                        ui.add_space(8.0);
+                        self.route_control(ui);
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         // Show or hide the per-app list beside the console, growing or shrinking
@@ -270,6 +277,101 @@ impl MixerApp {
                     });
                 });
             });
+    }
+
+    /// The playback device Windows sends sound to, and the virtual cable that could take its place.
+    fn route_state(&self) -> (bool, Option<crate::model::Device>) {
+        let snap = self.backend.snapshot();
+        let render = |d: &&crate::model::Device| d.flow == crate::model::Flow::Render;
+        let routed = snap
+            .devices
+            .iter()
+            .filter(render)
+            .any(|d| d.is_default && crate::engine::io::looks_virtual(&d.name));
+        let cable = snap
+            .devices
+            .iter()
+            .filter(render)
+            .filter(|d| crate::engine::io::looks_virtual(&d.name))
+            .find(|d| d.name.to_lowercase().contains("input"))
+            .or_else(|| {
+                snap.devices
+                    .iter()
+                    .filter(render)
+                    .find(|d| crate::engine::io::looks_virtual(&d.name))
+            })
+            .cloned();
+        (routed, cable)
+    }
+
+    /// One button that sends everything Windows plays through the mixer (by making the virtual
+    /// cable the default playback device), and puts the old device back when switched off.
+    fn route_control(&mut self, ui: &mut Ui) {
+        let (routed, cable) = self.route_state();
+        let Some(cable) = cable else { return };
+        let label = if routed { "Windows audio: routed" } else { "Route Windows audio" };
+        let tip = if routed {
+            "Everything Windows plays goes through wavemix. Click to give Windows its normal speakers back."
+        } else {
+            "Windows is playing straight to your speakers, so the mixer can't see it. Click to send it through wavemix."
+        };
+        if strip::toggle(ui, label, routed, vec2(150.0, 28.0), theme::ACCENT)
+            .on_hover_text(tip)
+            .clicked()
+        {
+            if routed {
+                self.unroute_windows_audio();
+            } else {
+                let snap = self.backend.snapshot();
+                self.config.restore_playback = snap
+                    .devices
+                    .iter()
+                    .find(|d| d.flow == crate::model::Flow::Render && d.is_default)
+                    .map(|d| d.id.clone());
+                self.backend.send(crate::model::Command::SetDefaultDevice {
+                    id: cable.id,
+                    flow: crate::model::Flow::Render,
+                });
+                self.mark_engine_dirty();
+            }
+        }
+        if !routed {
+            ui.label(
+                RichText::new("Windows sound bypasses the mixer")
+                    .size(12.0)
+                    .color(theme::METER_YELLOW),
+            );
+        }
+    }
+
+    /// Put Windows' default playback device back where it was before routing.
+    pub(super) fn unroute_windows_audio(&mut self) {
+        let snap = self.backend.snapshot();
+        let render = |d: &&crate::model::Device| d.flow == crate::model::Flow::Render;
+        let target = self
+            .config
+            .restore_playback
+            .take()
+            .filter(|id| snap.devices.iter().any(|d| &d.id == id))
+            .or_else(|| {
+                snap.devices
+                    .iter()
+                    .filter(render)
+                    .find(|d| !crate::engine::io::looks_virtual(&d.name))
+                    .map(|d| d.id.clone())
+            });
+        let on_cable = snap
+            .devices
+            .iter()
+            .filter(render)
+            .any(|d| d.is_default && crate::engine::io::looks_virtual(&d.name));
+        if let (Some(id), true) = (target, on_cable) {
+            self.backend.send(crate::model::Command::SetDefaultDevice {
+                id,
+                flow: crate::model::Flow::Render,
+            });
+        }
+        self.mark_engine_dirty();
     }
 
     /// Mark engine settings as changed; they're written to disk shortly after the last change.
@@ -625,6 +727,15 @@ impl MixerApp {
             });
             let current = self.config.engine.io.outputs[b].clone();
             if let Some(sel) = self.device_picker(ui, &current, &devices.outputs, b >= 3) {
+                // Two buses on one device would fight over it (and glitch), so the device moves.
+                if sel.is_some() {
+                    for other in 0..BUSES {
+                        if other != b && self.config.engine.io.outputs[other] == sel {
+                            self.config.engine.io.outputs[other] = None;
+                            self.engine.set_output(other, None);
+                        }
+                    }
+                }
                 self.config.engine.io.outputs[b] = sel.clone();
                 self.engine.set_output(b, sel);
                 self.mark_engine_dirty();
