@@ -43,6 +43,10 @@ pub struct MixerApp {
     editing: Option<(usize, console::EditorTab)>,
     /// When settings last changed and haven't been written to disk yet.
     engine_dirty_at: Option<std::time::Instant>,
+    /// Startup check for a left-over cable default has run.
+    route_checked: bool,
+    /// Auto-route has already happened for this engine run.
+    auto_routed: bool,
     config: Config,
     demo: bool,
     /// Height Simple mode wants to be, in points, measured from its content each frame. The
@@ -117,6 +121,8 @@ impl MixerApp {
                     _ => None,
                 }),
             engine_dirty_at: None,
+            route_checked: false,
+            auto_routed: false,
             config,
             demo,
             simple_height: std::cell::Cell::new(SIMPLE_SIZE[1]),
@@ -376,10 +382,21 @@ impl MixerApp {
 
 impl eframe::App for MixerApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.route_housekeeping();
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]
         let _ = (ctx, frame);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Leave Windows playing to the speakers it had, not to a cable nobody is listening to.
+        if self.config.restore_playback.is_some() {
+            self.unroute_windows_audio();
+            self.config.save();
+            // The backend thread applies the change; give it a moment before the process ends.
+            std::thread::sleep(std::time::Duration::from_millis(400));
+        }
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {

@@ -109,6 +109,8 @@ pub struct Config {
     /// Windows' default playback device from before "Route Windows audio" moved it to a virtual
     /// cable, so it can be put back.
     pub restore_playback: Option<String>,
+    /// Route Windows audio through the mixer whenever the engine is on.
+    pub auto_route: bool,
 }
 
 impl Default for Config {
@@ -132,6 +134,7 @@ impl Default for Config {
             osd_accent_system: true,
             voicemeeter_offer: true,
             restore_playback: None,
+            auto_route: false,
         }
     }
 }

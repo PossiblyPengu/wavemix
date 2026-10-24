@@ -100,6 +100,19 @@ impl MixerApp {
                 }
             }
         }
+        let mut auto = self.config.auto_route;
+        if ui
+            .checkbox(&mut auto, "Route Windows audio through the mixer when the engine is on")
+            .changed()
+        {
+            self.config.auto_route = auto;
+            self.config.save();
+        }
+        hint(
+            ui,
+            "Pro mode only sees sound that goes through the virtual cable. Your normal speakers \
+             are put back when the engine stops or wavemix quits.",
+        );
         let mut routing = self.config.experimental_routing;
         if ui
             .checkbox(&mut routing, "Let me send each app to a different output")

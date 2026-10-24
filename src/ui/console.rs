@@ -322,17 +322,7 @@ impl MixerApp {
             if routed {
                 self.unroute_windows_audio();
             } else {
-                let snap = self.backend.snapshot();
-                self.config.restore_playback = snap
-                    .devices
-                    .iter()
-                    .find(|d| d.flow == crate::model::Flow::Render && d.is_default)
-                    .map(|d| d.id.clone());
-                self.backend.send(crate::model::Command::SetDefaultDevice {
-                    id: cable.id,
-                    flow: crate::model::Flow::Render,
-                });
-                self.mark_engine_dirty();
+                self.route_windows_audio(&cable);
             }
         }
         if !routed {
@@ -341,6 +331,45 @@ impl MixerApp {
                     .size(12.0)
                     .color(theme::METER_YELLOW),
             );
+        }
+    }
+
+    fn route_windows_audio(&mut self, cable: &crate::model::Device) {
+        let snap = self.backend.snapshot();
+        self.config.restore_playback = snap
+            .devices
+            .iter()
+            .find(|d| d.flow == crate::model::Flow::Render && d.is_default)
+            .map(|d| d.id.clone());
+        self.backend.send(crate::model::Command::SetDefaultDevice {
+            id: cable.id.clone(),
+            flow: crate::model::Flow::Render,
+        });
+        self.mark_engine_dirty();
+    }
+
+    /// Runs every frame. Once Windows' devices are known: after a crash or forced close, put the
+    /// speakers back if we had moved them and the engine isn't running; and, if asked to, route
+    /// when the engine starts.
+    pub(super) fn route_housekeeping(&mut self) {
+        if self.backend.snapshot().devices.is_empty() {
+            return;
+        }
+        let running = self.engine.is_running();
+        if !self.route_checked {
+            self.route_checked = true;
+            if !running && self.config.restore_playback.is_some() {
+                self.unroute_windows_audio();
+            }
+        }
+        if !running {
+            self.auto_routed = false;
+        } else if self.config.auto_route && !self.auto_routed {
+            self.auto_routed = true;
+            let (routed, cable) = self.route_state();
+            if let (false, Some(cable)) = (routed, cable) {
+                self.route_windows_audio(&cable);
+            }
         }
     }
 
