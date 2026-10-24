@@ -204,7 +204,7 @@ impl MixerApp {
                             strip::stat_chip(
                                 ui,
                                 &format!("{drops} dropouts"),
-                                theme::METER_YELLOW,
+                                theme::NOTE_TEXT,
                             )
                             .on_hover_text(format!(
                                 "Audio glitched. Links buffer a little more after each dropout, so \
@@ -321,7 +321,7 @@ impl MixerApp {
         let (routed, cable) = self.route_state();
         let Some(cable) = cable else {
             if self.config.engine.io.inputs[HARDWARE_STRIPS].is_some() {
-                strip::stat_chip(ui, "CABLE Input is disabled", theme::METER_YELLOW)
+                strip::stat_chip(ui, "CABLE Input is disabled", theme::NOTE_TEXT)
                 .on_hover_text("Windows sound settings > Playback > right-click > Show disabled devices > enable CABLE Input");
             }
             return;
@@ -343,7 +343,7 @@ impl MixerApp {
             }
         }
         if !routed {
-            strip::stat_chip(ui, "Windows sound bypasses the mixer", theme::METER_YELLOW);
+            strip::stat_chip(ui, "Windows sound bypasses the mixer", theme::NOTE_TEXT);
         }
     }
 
@@ -366,7 +366,7 @@ impl MixerApp {
                 || devices.inputs.iter().any(|d| d.name.contains("CABLE Output"))
             {
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(0x2d, 0x24, 0x14))
+                    .fill(theme::TINT_NOTE)
                     .corner_radius(theme::R_CARD)
                     .inner_margin(egui::Margin::symmetric(14, 10))
                     .show(ui, |ui| {
@@ -374,7 +374,7 @@ impl MixerApp {
                         ui.label(
                             RichText::new("Switching outputs needs CABLE Input enabled in Windows sound settings (Playback > Show disabled devices).")
                                 .size(12.0)
-                                .color(theme::METER_YELLOW),
+                                .color(theme::NOTE_TEXT),
                         );
                     });
             }
@@ -472,7 +472,7 @@ impl MixerApp {
             return;
         };
         ui.add_space(4.0);
-        ui.label(RichText::new(msg).size(12.0).color(theme::METER_YELLOW));
+        ui.label(RichText::new(msg).size(12.0).color(theme::NOTE_TEXT));
     }
 
     fn route_windows_audio(&mut self, cable: &crate::model::Device) {

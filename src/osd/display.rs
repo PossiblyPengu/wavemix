@@ -513,8 +513,8 @@ impl State {
             card_w,
             card_h,
             radius,
-            argb(247, 38, 38, 42),
-            argb(247, 24, 24, 27),
+            argb(250, 255, 254, 251),
+            argb(250, 246, 242, 235),
         );
         canvas.stroke_round_rect(
             pad + 0.5,
@@ -522,7 +522,7 @@ impl State {
             card_w - 1.0,
             card_h - 1.0,
             radius,
-            argb(26, 255, 255, 255),
+            argb(46, 58, 50, 40),
             s(1.0),
         );
 
@@ -867,11 +867,11 @@ unsafe fn is_desktop(hwnd: HWND) -> bool {
 /// Green through amber to red as the signal approaches clipping.
 fn meter_color(level: f32) -> u32 {
     if level > 0.96 {
-        argb(255, 240, 80, 70)
+        argb(255, 219, 70, 64)
     } else if level > 0.88 {
-        argb(255, 235, 175, 70)
+        argb(255, 227, 167, 47)
     } else {
-        argb(255, 110, 205, 130)
+        argb(255, 88, 176, 98)
     }
 }
 
@@ -894,9 +894,9 @@ unsafe fn draw_tail(
     };
     canvas.fill_polygon(
         &[(cx - half, base), (cx + half, base), (cx, tip)],
-        argb(247, 24, 24, 27),
+        argb(250, 246, 242, 235),
     );
-    let edge = argb(26, 255, 255, 255);
+    let edge = argb(46, 58, 50, 40);
     canvas.stroke_line(cx - half, base, cx, tip, edge, 1.0);
     canvas.stroke_line(cx + half, base, cx, tip, edge, 1.0);
 }
@@ -943,7 +943,7 @@ unsafe fn draw_speaker(canvas: &Canvas, cx: f32, cy: f32, size: f32, muted: bool
             s * 0.50,
             -52.0,
             104.0,
-            argb(((color >> 24) as u8).saturating_sub(70), 255, 255, 255),
+            argb(((color >> 24) as u8).saturating_sub(70), 58, 50, 40),
             s * 0.13,
         );
     }
@@ -995,7 +995,7 @@ unsafe fn draw_vertical(
         pad + s(24.0),
         s(20.0),
         frame.muted,
-        argb(235, 255, 255, 255),
+        argb(235, 58, 50, 40),
     );
 
     let track_w = s(10.0);
@@ -1010,7 +1010,7 @@ unsafe fn draw_vertical(
         track_w,
         track_h,
         track_w / 2.0,
-        argb(38, 255, 255, 255),
+        argb(38, 58, 50, 40),
     );
 
     // Live signal meter alongside the fader, so you can see level as well as the setting.
@@ -1022,7 +1022,7 @@ unsafe fn draw_vertical(
         meter_w,
         track_h,
         meter_w / 2.0,
-        argb(30, 255, 255, 255),
+        argb(30, 58, 50, 40),
     );
     let meter_h = track_h * frame.meter.clamp(0.0, 1.0);
     if meter_h > 0.5 {
@@ -1068,7 +1068,7 @@ unsafe fn draw_vertical(
         card_w,
         s(14.0),
         s(10.5),
-        argb(150, 255, 255, 255),
+        argb(150, 58, 50, 40),
         ALIGN_CENTER,
         false,
     );
@@ -1079,7 +1079,7 @@ unsafe fn draw_vertical(
         card_w,
         s(20.0),
         s(14.0),
-        argb(240, 255, 255, 255),
+        argb(240, 58, 50, 40),
         ALIGN_CENTER,
         true,
     );
@@ -1090,7 +1090,7 @@ unsafe fn draw_vertical(
         card_w,
         s(14.0),
         s(10.5),
-        argb(140, 255, 255, 255),
+        argb(140, 58, 50, 40),
         ALIGN_CENTER,
         false,
     );
@@ -1113,7 +1113,7 @@ unsafe fn draw_horizontal(
         pad + card_h / 2.0,
         s(26.0),
         frame.muted,
-        argb(235, 255, 255, 255),
+        argb(235, 58, 50, 40),
     );
 
     let track_left = pad + s(62.0);
@@ -1129,7 +1129,7 @@ unsafe fn draw_horizontal(
         track_w,
         s(14.0),
         s(10.5),
-        argb(150, 255, 255, 255),
+        argb(150, 58, 50, 40),
         ALIGN_NEAR,
         false,
     );
@@ -1139,7 +1139,7 @@ unsafe fn draw_horizontal(
         track_w,
         track_h,
         track_h / 2.0,
-        argb(38, 255, 255, 255),
+        argb(38, 58, 50, 40),
     );
 
     // Live signal meter under the fader, with the same peak-hold behaviour as the vertical layout.
@@ -1151,7 +1151,7 @@ unsafe fn draw_horizontal(
         track_w,
         meter_h,
         meter_h / 2.0,
-        argb(30, 255, 255, 255),
+        argb(30, 58, 50, 40),
     );
     let meter_w = track_w * frame.meter.clamp(0.0, 1.0);
     if meter_w > 0.5 {
@@ -1198,7 +1198,7 @@ unsafe fn draw_horizontal(
         s(58.0),
         s(20.0),
         s(15.0),
-        argb(240, 255, 255, 255),
+        argb(240, 58, 50, 40),
         ALIGN_CENTER,
         true,
     );
@@ -1209,7 +1209,7 @@ unsafe fn draw_horizontal(
         s(58.0),
         s(14.0),
         s(10.5),
-        argb(140, 255, 255, 255),
+        argb(140, 58, 50, 40),
         ALIGN_CENTER,
         false,
     );

@@ -324,6 +324,11 @@ fn paint_h_slider(
     );
 
     let knob = pos2(knob_x, track.center().y);
-    p.circle_filled(knob, 8.5, theme::TEXT);
-    p.circle_stroke(knob, 8.5, egui::Stroke::new(2.0, color));
+    p.circle_filled(
+        pos2(knob.x, knob.y + 1.5),
+        9.5,
+        egui::Color32::from_rgba_unmultiplied(0x6b, 0x55, 0x38, 55),
+    );
+    p.circle_filled(knob, 9.0, theme::CARD);
+    p.circle_stroke(knob, 9.0, egui::Stroke::new(2.0, color));
 }

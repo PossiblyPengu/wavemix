@@ -59,8 +59,8 @@ impl MixerApp {
     /// The small card offered at the top of the window when Voicemeeter is installed.
     pub(super) fn switch_banner(&mut self, ui: &mut Ui) {
         egui::Frame::new()
-            .fill(egui::Color32::from_rgb(0x2d, 0x24, 0x14))
-            .stroke(egui::Stroke::new(1.0, theme::ACCENT.linear_multiply(0.35)))
+            .fill(theme::TINT_NOTE)
+            .stroke(egui::Stroke::new(1.0, theme::ACCENT.linear_multiply(0.45)))
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(16, 12))
             .show(ui, |ui| {

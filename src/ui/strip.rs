@@ -365,14 +365,14 @@ pub fn db_fader(
     painter.circle_filled(
         pos2(centre.x, centre.y + 2.5),
         13.0 + lift,
-        Color32::from_black_alpha(70),
+        Color32::from_rgba_unmultiplied(0x6b, 0x55, 0x38, 60),
     );
     let knob_fill = if resp.dragged() {
-        theme::ACTIVE
-    } else if resp.hovered() {
-        theme::HOVER
-    } else {
         theme::PANEL_HI
+    } else if resp.hovered() {
+        theme::PANEL
+    } else {
+        theme::CARD
     };
     painter.circle_filled(centre, 12.0 + lift, knob_fill);
     painter.circle_stroke(
@@ -538,8 +538,9 @@ pub fn balance(ui: &mut Ui, id: Id, pan: f32, width: f32) -> Option<f32> {
     painter.circle_filled(rect.center(), 1.8, theme::TEXT_DIM);
     let x = rect.center().x + v * (track.width() / 2.0);
     let c = pos2(x, rect.center().y);
-    painter.circle_filled(pos2(c.x, c.y + 1.5), 8.5, Color32::from_black_alpha(60));
-    painter.circle_filled(c, 8.0, theme::TEXT);
+    painter.circle_filled(pos2(c.x, c.y + 1.5), 8.5, Color32::from_rgba_unmultiplied(0x6b, 0x55, 0x38, 50));
+    painter.circle_filled(c, 8.0, theme::CARD);
+    painter.circle_stroke(c, 8.0, Stroke::new(2.0, theme::ACCENT));
     resp.on_hover_text("Balance. Double-click to centre.");
     ((v - pan).abs() > f32::EPSILON).then_some(v)
 }

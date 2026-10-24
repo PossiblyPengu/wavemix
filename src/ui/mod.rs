@@ -443,7 +443,10 @@ impl MixerApp {
         let pro = self.view() == View::Console;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
-            ui.label(RichText::new("wavemix").size(16.0).strong().color(theme::ACCENT));
+            let (mark, _) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::hover());
+            ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT);
+            ui.painter().circle_filled(mark.center(), 3.0, theme::CARD);
+            ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT));
             if self.demo && pro {
                 ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM))
                     .on_hover_text("Showing fake devices and apps");
