@@ -10,7 +10,7 @@ use eframe::egui::{self, vec2, Align, Id, Layout, RichText, TextureHandle, Ui};
 use crate::backend::Handle;
 use crate::config::{Config, View};
 use crate::engine::runtime::Engine;
-use crate::model::{group_sessions, AppStrip, Command, Flow, IconData, Snapshot};
+use crate::model::{group_apps, AppStrip, Command, Flow, IconData, Snapshot};
 
 mod compact;
 mod console;
@@ -211,11 +211,13 @@ impl MixerApp {
 
     /// Every app that's using any playback device, one entry per (app, device), playing first.
     fn all_apps(&self, snap: &Snapshot, include_idle: bool) -> Vec<AppStrip> {
-        let mut apps: Vec<AppStrip> = snap
+        let default = snap
             .devices
             .iter()
-            .filter(|d| d.flow == Flow::Render)
-            .flat_map(|d| group_sessions(&snap.sessions, &d.id))
+            .find(|d| d.flow == Flow::Render && d.is_default)
+            .map(|d| d.id.as_str());
+        let mut apps: Vec<AppStrip> = group_apps(&snap.sessions, default)
+            .into_iter()
             .filter(|a| include_idle || a.active)
             .collect();
         apps.sort_by(|a, b| {

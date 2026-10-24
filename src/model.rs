@@ -157,49 +157,96 @@ pub struct AppStrip {
     pub active: bool,
 }
 
-/// Group sessions by (device, application) the way EarTrumpet does, so an app with several
-/// sessions (a browser with a tab per stream) is one fader instead of five.
-pub fn group_sessions(sessions: &[Session], device_id: &str) -> Vec<AppStrip> {
-    let mut groups: BTreeMap<String, AppStrip> = BTreeMap::new();
-    for s in sessions.iter().filter(|s| s.device_id == device_id) {
-        let key = if s.exe.is_empty() {
-            format!("pid:{}", s.pid)
-        } else {
-            s.exe.to_lowercase()
-        };
-        let g = groups.entry(key.clone()).or_insert_with(|| AppStrip {
-            key,
-            name: s.name.clone(),
-            icon: None,
-            pids: Vec::new(),
-            device_id: s.device_id.clone(),
-            sessions: Vec::new(),
-            volume: 0.0,
-            muted: true,
-            peak: 0.0,
-            active: false,
-        });
-        g.sessions.push((s.device_id.clone(), s.id.clone()));
-        if s.pid != 0 && !g.pids.contains(&s.pid) {
-            g.pids.push(s.pid);
-        }
-        if g.icon.is_none() {
-            g.icon = s.icon.clone();
-        }
-        // The strip's fader shows the loudest member; muted only if every member is.
-        g.volume = g.volume.max(s.volume);
-        g.muted &= s.muted;
-        g.peak = g.peak.max(s.peak);
-        g.active |= s.active;
+/// Our own audio sessions (the mixer playing to a speaker) are not apps to control.
+fn is_own(s: &Session) -> bool {
+    s.pid != 0 && s.pid == std::process::id()
+}
+
+fn app_key(s: &Session) -> String {
+    if s.exe.is_empty() {
+        format!("pid:{}", s.pid)
+    } else {
+        s.exe.to_lowercase()
     }
+}
+
+fn new_strip(key: String, s: &Session) -> AppStrip {
+    AppStrip {
+        key,
+        name: s.name.clone(),
+        icon: None,
+        pids: Vec::new(),
+        device_id: s.device_id.clone(),
+        sessions: Vec::new(),
+        volume: 0.0,
+        muted: true,
+        peak: 0.0,
+        active: false,
+    }
+}
+
+fn add_session(g: &mut AppStrip, s: &Session) {
+    g.sessions.push((s.device_id.clone(), s.id.clone()));
+    if s.pid != 0 && !g.pids.contains(&s.pid) {
+        g.pids.push(s.pid);
+    }
+    if g.icon.is_none() {
+        g.icon = s.icon.clone();
+    }
+    // The strip's fader shows the loudest member; muted only if every member is.
+    g.volume = g.volume.max(s.volume);
+    g.muted &= s.muted;
+    g.peak = g.peak.max(s.peak);
+    g.active |= s.active;
+}
+
+/// Active apps first, then alphabetical, so a strip doesn't jump around while it plays.
+fn sorted(groups: BTreeMap<String, AppStrip>) -> Vec<AppStrip> {
     let mut v: Vec<AppStrip> = groups.into_values().collect();
-    // Active apps first, then alphabetical, so a strip doesn't jump around while it plays.
     v.sort_by(|a, b| {
         b.active
             .cmp(&a.active)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     v
+}
+
+/// Group sessions by (device, application) the way EarTrumpet does, so an app with several
+/// sessions (a browser with a tab per stream) is one fader instead of five.
+pub fn group_sessions(sessions: &[Session], device_id: &str) -> Vec<AppStrip> {
+    let mut groups: BTreeMap<String, AppStrip> = BTreeMap::new();
+    for s in sessions
+        .iter()
+        .filter(|s| s.device_id == device_id && !is_own(s))
+    {
+        let key = app_key(s);
+        let g = groups
+            .entry(key.clone())
+            .or_insert_with(|| new_strip(key, s));
+        add_session(g, s);
+    }
+    sorted(groups)
+}
+
+/// One strip per application across every playback device. Windows keeps a (usually silent)
+/// session for an app on each device it has ever used, so listing per device shows the same
+/// program over and over. The strip's device is where it is actually playing; failing that, the
+/// default device if it has a session there. Volume and mute changes still reach every session.
+pub fn group_apps(sessions: &[Session], default_device: Option<&str>) -> Vec<AppStrip> {
+    let mut groups: BTreeMap<String, (u8, AppStrip)> = BTreeMap::new();
+    for s in sessions.iter().filter(|s| !is_own(s)) {
+        let key = app_key(s);
+        let rank = u8::from(s.active) * 2 + u8::from(Some(s.device_id.as_str()) == default_device);
+        let entry = groups
+            .entry(key.clone())
+            .or_insert_with(|| (rank, new_strip(key, s)));
+        if rank > entry.0 {
+            entry.0 = rank;
+            entry.1.device_id = s.device_id.clone();
+        }
+        add_session(&mut entry.1, s);
+    }
+    sorted(groups.into_iter().map(|(k, (_, g))| (k, g)).collect())
 }
 
 pub const DB_FLOOR: f32 = -60.0;
@@ -239,6 +286,29 @@ mod tests {
             peak: 0.0,
             active,
         }
+    }
+
+    #[test]
+    fn an_app_with_sessions_on_several_devices_is_one_strip_on_the_device_it_plays() {
+        let on = |id: &str, dev: &str, active: bool| {
+            sess(id, dev, "steam", 1.0, false, active)
+        };
+        let list = [on("a", "d1", false), on("b", "d2", true), on("c", "d3", false)];
+        let apps = group_apps(&list, Some("d1"));
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].device_id, "d2"); // the one that is playing
+        assert_eq!(apps[0].sessions.len(), 3); // but a slider change reaches all of them
+        // Nothing playing: fall back to the default device.
+        let quiet = [on("a", "d2", false), on("b", "d1", false)];
+        assert_eq!(group_apps(&quiet, Some("d1"))[0].device_id, "d1");
+    }
+
+    #[test]
+    fn our_own_sessions_are_not_listed() {
+        let mut me = sess("me", "d1", "wavemix", 1.0, false, true);
+        me.pid = std::process::id();
+        assert!(group_sessions(&[me.clone()], "d1").is_empty());
+        assert!(group_apps(&[me], None).is_empty());
     }
 
     #[test]
