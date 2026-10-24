@@ -392,8 +392,13 @@ impl MixerApp {
         ui.horizontal_wrapped(|ui| {
             for d in &hardware {
                 let on = active.contains(&d.name);
-                if strip::toggle(ui, strip::short_device_name(&d.name), on, vec2(150.0, 26.0), theme::ACCENT)
-                    .on_hover_text("Tick more than one to play on all of them at once")
+                let label = strip::label_among(&d.name, hardware.iter().map(|h| h.name.as_str()));
+                let label = strip::truncate(ui, &label, 150.0, 11.5);
+                if strip::toggle(ui, &label, on, vec2(170.0, 28.0), theme::ACCENT)
+                    .on_hover_text(format!(
+                        "{}\nTick more than one to play on all of them at once",
+                        d.name
+                    ))
                     .clicked()
                 {
                     if on {
@@ -640,7 +645,7 @@ impl MixerApp {
         want_virtual: bool,
     ) -> Option<Option<String>> {
         let text = match current {
-            Some(n) => strip::short_device_name(n).to_string(),
+            Some(n) => strip::label_among(n, list.iter().map(|d| d.name.as_str())),
             None => "Select device".to_string(),
         };
         let resp = strip::chip(ui, &text, CONSOLE_STRIP_W - 4.0, current.is_some()).on_hover_text(

@@ -122,7 +122,12 @@ impl MixerApp {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let width = ui.available_width().min(240.0);
                         let resp =
-                            strip::chip(ui, strip::short_device_name(&dev.name), width, false)
+                            strip::chip(
+                                ui,
+                                &strip::label_among(&dev.name, outputs.iter().map(|d| d.name.as_str())),
+                                width,
+                                false,
+                            )
                                 .on_hover_text("Choose which output to control");
                         egui::Popup::menu(&resp).show(|ui| {
                             ui.set_min_width(220.0);

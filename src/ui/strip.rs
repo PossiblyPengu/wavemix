@@ -170,6 +170,24 @@ pub fn short_device_name(name: &str) -> &str {
     }
 }
 
+/// A device's short name, kept unique among `all`: two "Speakers (...)" devices become
+/// "Speakers · Logi Z407" and "Speakers · Razer USB Sound Card" instead of both reading "Speakers".
+pub fn label_among<'a>(name: &str, all: impl IntoIterator<Item = &'a str>) -> String {
+    let short = short_device_name(name);
+    let clash = all
+        .into_iter()
+        .any(|other| other != name && short_device_name(other) == short);
+    if !clash {
+        return short.to_string();
+    }
+    match (name.find(" ("), name.rfind(')')) {
+        (Some(open), Some(close)) if close > open + 2 => {
+            format!("{short} · {}", &name[open + 2..close])
+        }
+        _ => name.to_string(),
+    }
+}
+
 /// Shorten `text` with an ellipsis so it fits in `max_w` points at `size`.
 pub fn truncate(ui: &Ui, text: &str, max_w: f32, size: f32) -> String {
     let font = FontId::proportional(size);
@@ -197,6 +215,14 @@ pub fn truncate(ui: &Ui, text: &str, max_w: f32, size: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::short_device_name;
+
+    #[test]
+    fn clashing_short_names_keep_their_driver() {
+        let all = ["Speakers (Logi Z407)", "Speakers (Razer USB Sound Card)", "Headphones (USB)"];
+        assert_eq!(super::label_among(all[0], all), "Speakers · Logi Z407");
+        assert_eq!(super::label_among(all[1], all), "Speakers · Razer USB Sound Card");
+        assert_eq!(super::label_among(all[2], all), "Headphones");
+    }
 
     #[test]
     fn short_names_drop_the_driver() {

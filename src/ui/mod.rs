@@ -254,9 +254,17 @@ impl MixerApp {
             .devices
             .iter()
             .find(|d| d.id == app.device_id)
-            .map(|d| strip::short_device_name(&d.name))
-            .unwrap_or("Output");
-        let resp = strip::chip(ui, name, width, self.config.experimental_routing)
+            .map(|d| {
+                strip::label_among(
+                    &d.name,
+                    snap.devices
+                        .iter()
+                        .filter(|o| o.flow == Flow::Render)
+                        .map(|o| o.name.as_str()),
+                )
+            })
+            .unwrap_or_else(|| "Output".to_string());
+        let resp = strip::chip(ui, &name, width, self.config.experimental_routing)
             .on_hover_text("Where this app plays. Click to change.");
         egui::Popup::menu(&resp).show(|ui| {
             ui.set_min_width(210.0);
