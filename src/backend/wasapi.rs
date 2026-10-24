@@ -17,8 +17,8 @@ use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioMeterI
 use windows::Win32::Media::Audio::{
     eCapture, eCommunications, eConsole, eMultimedia, eRender, AudioSessionStateActive,
     AudioSessionStateExpired, EDataFlow, ERole, IAudioSessionControl, IAudioSessionControl2,
-    IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator,
-    DEVICE_STATE_ACTIVE,
+    IAudioSessionEnumerator, IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator,
+    ISimpleAudioVolume, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
 use windows::Win32::System::Com::{
@@ -82,6 +82,9 @@ struct DeviceHandle {
     info: Device,
     volume: IAudioEndpointVolume,
     meter: IAudioMeterInformation,
+    /// The endpoint itself. The interfaces above were activated from it, and Windows can stop
+    /// updating them once it goes away, so it lives as long as they do.
+    _device: IMMDevice,
 }
 
 struct SessionHandle {
@@ -89,6 +92,10 @@ struct SessionHandle {
     volume: ISimpleAudioVolume,
     meter: IAudioMeterInformation,
     control: IAudioSessionControl,
+    /// The session list and manager the control came from; dropped too early, a session's meter
+    /// can read zero forever.
+    _list: IAudioSessionEnumerator,
+    _manager: IAudioSessionManager2,
 }
 
 pub struct WasapiEngine {
@@ -99,6 +106,9 @@ pub struct WasapiEngine {
     sessions: Vec<SessionHandle>,
     /// pid -> who it is, so a rescan doesn't reopen every process and re-extract its icon.
     app_cache: HashMap<u32, AppInfo>,
+    /// Meter reads that failed, and the last error: if levels sit at zero, this says why.
+    meter_errors: u64,
+    last_meter_error: Option<String>,
 }
 
 impl WasapiEngine {
@@ -114,6 +124,8 @@ impl WasapiEngine {
                 devices: Vec::new(),
                 sessions: Vec::new(),
                 app_cache: HashMap::new(),
+                meter_errors: 0,
+                last_meter_error: None,
             }
         }
     }
@@ -240,6 +252,8 @@ impl WasapiEngine {
                     volume,
                     meter,
                     control,
+                    _list: list.clone(),
+                    _manager: manager.clone(),
                 });
             }
         }
@@ -264,7 +278,8 @@ impl WasapiEngine {
                     .GetMute()
                     .map(|b| b.as_bool())
                     .unwrap_or(d.info.muted);
-                d.info.peak = d.meter.GetPeakValue().unwrap_or(0.0);
+                d.info.peak =
+                    read_peak(&d.meter, &mut self.meter_errors, &mut self.last_meter_error);
             }
         }
         for s in &mut self.sessions {
@@ -275,7 +290,8 @@ impl WasapiEngine {
                     .GetMute()
                     .map(|b| b.as_bool())
                     .unwrap_or(s.info.muted);
-                s.info.peak = s.meter.GetPeakValue().unwrap_or(0.0);
+                s.info.peak =
+                    read_peak(&s.meter, &mut self.meter_errors, &mut self.last_meter_error);
                 s.info.active = s.control.GetState().ok() == Some(AudioSessionStateActive);
             }
         }
@@ -303,6 +319,17 @@ impl Default for WasapiEngine {
 }
 
 impl Engine for WasapiEngine {
+    fn diagnostics(&self) -> String {
+        format!(
+            "meter reads that failed: {}{}",
+            self.meter_errors,
+            self.last_meter_error
+                .as_ref()
+                .map(|e| format!(" (last error: {e})"))
+                .unwrap_or_default()
+        )
+    }
+
     fn tick(&mut self, rescan: bool) -> Snapshot {
         if rescan {
             self.rescan();
@@ -366,6 +393,22 @@ impl WasapiEngine {
     }
 }
 
+/// A peak reading, with failures counted and remembered rather than quietly turned into silence.
+unsafe fn read_peak(
+    meter: &IAudioMeterInformation,
+    errors: &mut u64,
+    last: &mut Option<String>,
+) -> f32 {
+    match meter.GetPeakValue() {
+        Ok(v) => v,
+        Err(e) => {
+            *errors += 1;
+            *last = Some(e.to_string());
+            0.0
+        }
+    }
+}
+
 fn open_device(device: &IMMDevice, flow: Flow, default_id: Option<&str>) -> Option<DeviceHandle> {
     unsafe {
         let id = take_pwstr(device.GetId().ok()?)?;
@@ -384,6 +427,7 @@ fn open_device(device: &IMMDevice, flow: Flow, default_id: Option<&str>) -> Opti
             },
             volume,
             meter,
+            _device: device.clone(),
         })
     }
 }

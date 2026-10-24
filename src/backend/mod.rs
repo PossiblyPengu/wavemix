@@ -27,6 +27,10 @@ pub trait Engine {
     /// levels on what is already known.
     fn tick(&mut self, rescan: bool) -> Snapshot;
     fn apply(&mut self, cmd: &Command);
+    /// Anything worth including in a bug report, such as meter read failures.
+    fn diagnostics(&self) -> String {
+        String::new()
+    }
 }
 
 #[derive(Clone)]

@@ -12,6 +12,22 @@ pub struct DeviceInfo {
     pub is_default: bool,
     /// A virtual audio cable rather than real hardware (VB-Cable, Voicemeeter's own devices).
     pub is_virtual: bool,
+    /// "What you hear": captures everything an output device is playing, rather than recording
+    /// from a microphone.
+    pub is_loopback: bool,
+}
+
+/// Loopback inputs are named after the output they capture, behind this prefix.
+pub const LOOPBACK_PREFIX: &str = "System audio: ";
+
+/// The input name for capturing what `output` plays.
+pub fn loopback_name(output: &str) -> String {
+    format!("{LOOPBACK_PREFIX}{output}")
+}
+
+/// The output device a loopback input name refers to.
+pub fn loopback_target(input: &str) -> Option<&str> {
+    input.strip_prefix(LOOPBACK_PREFIX)
 }
 
 /// Names that identify virtual cables. Matching is on the device's display name, which is all
@@ -41,10 +57,19 @@ pub fn same_cable(input: &str, output: &str) -> bool {
         && matches!((cable_key(input), cable_key(output)), (Some(a), Some(b)) if a == b)
 }
 
+/// True when sending a strip that listens to `input` onto the bus playing to `output` would feed
+/// the mix back into itself: either the two ends of one virtual cable, or a "what you hear"
+/// capture of the very device the bus plays to.
+pub fn feeds_itself(input: &str, output: &str) -> bool {
+    loopback_target(input) == Some(output) || same_cable(input, output)
+}
+
 /// A running capture or playback stream. Dropping it stops the stream.
 pub struct Opened {
     /// The device's own sample rate.
     pub rate: u32,
+    /// The source stops sending data while it is silent (loopback), so starvation isn't a fault.
+    pub loopback: bool,
     /// Held only to keep the stream running; dropping it stops the device.
     #[allow(dead_code)]
     pub keepalive: Box<dyn Any>,
@@ -74,7 +99,27 @@ pub trait AudioIo {
 
 #[cfg(test)]
 mod tests {
-    use super::{looks_virtual, same_cable};
+    use super::{feeds_itself, looks_virtual, loopback_name, loopback_target, same_cable};
+
+    #[test]
+    fn loopback_names_round_trip() {
+        let n = loopback_name("Speakers (Realtek)");
+        assert_eq!(n, "System audio: Speakers (Realtek)");
+        assert_eq!(loopback_target(&n), Some("Speakers (Realtek)"));
+        assert_eq!(loopback_target("Microphone (Yeti)"), None);
+    }
+
+    #[test]
+    fn capturing_what_a_bus_plays_is_a_loop() {
+        let speakers = "Speakers (Realtek)";
+        assert!(feeds_itself(&loopback_name(speakers), speakers));
+        assert!(!feeds_itself(&loopback_name(speakers), "Headphones (USB)"));
+        assert!(feeds_itself(
+            "CABLE Output (VB-Audio Virtual Cable)",
+            "CABLE Input (VB-Audio Virtual Cable)"
+        ));
+        assert!(!feeds_itself("Microphone (Yeti)", speakers));
+    }
 
     #[test]
     fn a_cables_two_ends_form_a_loop_but_other_pairs_do_not() {

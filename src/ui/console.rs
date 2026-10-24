@@ -9,7 +9,7 @@ use eframe::egui::{self, pos2, vec2, Align, Color32, Layout, RichText, Sense, St
 use super::strip::{self, CONSOLE_STRIP_W};
 use super::{theme, MixerApp};
 use crate::engine::dsp::eq_response_db;
-use crate::engine::io::{same_cable, DeviceInfo};
+use crate::engine::io::{feeds_itself, DeviceInfo};
 use crate::engine::params::{
     bus_name, strip_name, EngineParams, EqParams, StripParams, BUSES, HARDWARE_STRIPS, STRIPS,
 };
@@ -319,24 +319,35 @@ impl MixerApp {
         let speakers = pick(&devices.outputs, false, "");
         let cable_out = pick(&devices.inputs, true, "CABLE Output");
         let cable_in = pick(&devices.outputs, true, "CABLE Input");
+        // "What you hear": a strip that shows the real level of everything playing, with no
+        // sends, so it can't feed back into the speakers it is listening to.
+        let system = devices
+            .inputs
+            .iter()
+            .filter(|d| d.is_loopback)
+            .find(|d| d.is_default)
+            .or_else(|| devices.inputs.iter().find(|d| d.is_loopback))
+            .map(|d| d.name.clone());
 
         let mut params = self.engine.params();
         // Hardware inputs stay off A1 so you don't hear your own mic; they go to B1 for chat apps.
         for s in params.strips.iter_mut().take(HARDWARE_STRIPS) {
             s.sends = [false, false, false, cable_in.is_some(), false];
         }
-        for s in params.strips.iter_mut().skip(HARDWARE_STRIPS) {
-            s.sends = [true, false, false, false, false];
-        }
+        // Virtual 1 (the cable) plays on A1; Virtual 2 (system audio) is for metering only.
+        params.strips[HARDWARE_STRIPS].sends = [true, false, false, false, false];
+        params.strips[STRIPS - 1].sends = [false; BUSES];
         self.commit_params(params);
 
         let io = &mut self.config.engine.io;
         io.inputs[0] = mic.clone();
         io.inputs[HARDWARE_STRIPS] = cable_out.clone();
+        io.inputs[STRIPS - 1] = system.clone();
         io.outputs[0] = speakers.clone();
         io.outputs[3] = cable_in.clone();
         self.engine.set_input(0, mic);
         self.engine.set_input(HARDWARE_STRIPS, cable_out);
+        self.engine.set_input(STRIPS - 1, system);
         self.engine.set_output(0, speakers);
         self.engine.set_output(3, cable_in);
         self.config.engine.configured = true;
@@ -375,23 +386,27 @@ impl MixerApp {
             }
             ui.separator();
             // The kind this slot is meant for goes first, so the likely choice is on top.
-            for virtual_group in [want_virtual, !want_virtual] {
-                let group: Vec<&DeviceInfo> = list
-                    .iter()
-                    .filter(|d| d.is_virtual == virtual_group)
-                    .collect();
+            const LABELS: [&str; 3] = [
+                "SYSTEM AUDIO (what you hear, for level meters and desktop capture)",
+                "VIRTUAL CABLES",
+                "HARDWARE",
+            ];
+            let kind = |d: &DeviceInfo| {
+                if d.is_loopback {
+                    0
+                } else if d.is_virtual {
+                    1
+                } else {
+                    2
+                }
+            };
+            let order = if want_virtual { [0, 1, 2] } else { [2, 1, 0] };
+            for k in order {
+                let group: Vec<&DeviceInfo> = list.iter().filter(|d| kind(d) == k).collect();
                 if group.is_empty() {
                     continue;
                 }
-                ui.label(
-                    RichText::new(if virtual_group {
-                        "VIRTUAL CABLES"
-                    } else {
-                        "HARDWARE"
-                    })
-                    .size(10.0)
-                    .color(theme::TEXT_DIM),
-                );
+                ui.label(RichText::new(LABELS[k]).size(10.0).color(theme::TEXT_DIM));
                 for d in group {
                     let label = format!(
                         "{}{}",
@@ -527,7 +542,7 @@ impl MixerApp {
                         &self.config.engine.io.inputs[i],
                         &self.config.engine.io.outputs[b],
                     ) {
-                        (Some(inp), Some(out)) => same_cable(inp, out),
+                        (Some(inp), Some(out)) => feeds_itself(inp, out),
                         _ => false,
                     };
                     let (color, tip) = if loops && p.sends[b] {

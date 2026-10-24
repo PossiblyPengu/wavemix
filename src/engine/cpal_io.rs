@@ -11,7 +11,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, SampleFormat, SizedSample, StreamConfig};
 use ringbuf::{HeapCons, HeapProd};
 
-use super::io::{looks_virtual, AudioIo, DeviceInfo, Opened};
+use super::io::{looks_virtual, loopback_name, loopback_target, AudioIo, DeviceInfo, Opened};
 use super::rate::{write_frames, RateReader};
 
 pub struct CpalIo {
@@ -27,6 +27,15 @@ impl CpalIo {
 
     fn name_of(device: &Device) -> Option<String> {
         device.description().ok().map(|d| d.name().to_string())
+    }
+
+    /// Resolve an input name to a device: a microphone, or (for "System audio: X") the playback
+    /// device X, which cpal captures in loopback mode.
+    fn find_input(&self, name: &str) -> Option<(Device, bool)> {
+        match loopback_target(name) {
+            Some(output) => self.find(output, false).map(|d| (d, true)),
+            None => self.find(name, true).map(|d| (d, false)),
+        }
     }
 
     fn find(&self, name: &str, input: bool) -> Option<Device> {
@@ -56,15 +65,27 @@ impl CpalIo {
                 .map(|d| d.collect())
                 .unwrap_or_default()
         };
-        devices
+        let mut list: Vec<DeviceInfo> = devices
             .iter()
             .filter_map(Self::name_of)
             .map(|name| DeviceInfo {
                 is_default: default.as_deref() == Some(name.as_str()),
                 is_virtual: looks_virtual(&name),
+                is_loopback: false,
                 name,
             })
-            .collect()
+            .collect();
+        // Every playback device can also be listened to as an input: "what you hear".
+        if input {
+            let outputs: Vec<DeviceInfo> = self.list(false);
+            list.extend(outputs.into_iter().map(|o| DeviceInfo {
+                name: loopback_name(&o.name),
+                is_default: o.is_default,
+                is_virtual: false,
+                is_loopback: true,
+            }));
+        }
+        list
     }
 }
 
@@ -88,10 +109,17 @@ impl AudioIo for CpalIo {
     }
 
     fn open_input(&mut self, name: &str, prod: HeapProd<f32>) -> Result<Opened, String> {
-        let device = self
-            .find(name, true)
+        let (device, loopback) = self
+            .find_input(name)
             .ok_or_else(|| format!("{name} isn't available"))?;
-        let supported = device.default_input_config().map_err(describe)?;
+        // A playback device has no "input" format of its own; its mix format is what loopback
+        // delivers.
+        let supported = if loopback {
+            device.default_output_config()
+        } else {
+            device.default_input_config()
+        }
+        .map_err(describe)?;
         let rate = supported.sample_rate();
         let channels = supported.channels() as usize;
         let config = supported.config();
@@ -105,6 +133,7 @@ impl AudioIo for CpalIo {
         stream.play().map_err(describe)?;
         Ok(Opened {
             rate,
+            loopback,
             keepalive: Box::new(stream),
         })
     }
@@ -136,6 +165,7 @@ impl AudioIo for CpalIo {
         stream.play().map_err(describe)?;
         Ok(Opened {
             rate,
+            loopback: false,
             keepalive: Box::new(stream),
         })
     }

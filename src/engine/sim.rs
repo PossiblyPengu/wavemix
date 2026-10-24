@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use ringbuf::{HeapCons, HeapProd};
 
-use super::io::{looks_virtual, AudioIo, DeviceInfo, Opened};
+use super::io::{looks_virtual, loopback_name, AudioIo, DeviceInfo, Opened};
 use super::rate::{write_frames, RateReader};
 
 /// What a simulated input produces.
@@ -63,6 +63,9 @@ const INPUTS: &[SimDevice] = &[
     },
 ];
 
+/// The simulated "what you hear" capture, named after the output it listens to.
+const LOOPBACK_OF: &str = "Speakers (Sim Audio)";
+
 const OUTPUTS: &[SimDevice] = &[
     SimDevice {
         name: "Speakers (Sim Audio)",
@@ -114,6 +117,7 @@ impl SimIo {
                 name: d.name.to_string(),
                 is_default: i == default,
                 is_virtual: looks_virtual(d.name),
+                is_loopback: false,
             })
             .collect()
     }
@@ -136,7 +140,14 @@ impl Drop for Stop {
 
 impl AudioIo for SimIo {
     fn inputs(&mut self) -> Vec<DeviceInfo> {
-        Self::infos(INPUTS, 0)
+        let mut list = Self::infos(INPUTS, 0);
+        list.push(DeviceInfo {
+            name: loopback_name(LOOPBACK_OF),
+            is_default: false,
+            is_virtual: false,
+            is_loopback: true,
+        });
+        list
     }
 
     fn outputs(&mut self) -> Vec<DeviceInfo> {
@@ -144,10 +155,26 @@ impl AudioIo for SimIo {
     }
 
     fn open_input(&mut self, name: &str, mut prod: HeapProd<f32>) -> Result<Opened, String> {
-        let dev = INPUTS
-            .iter()
-            .find(|d| d.name == name)
-            .ok_or_else(|| format!("no such device: {name}"))?;
+        // The loopback behaves like a quiet input that plays a tone, so the console has something
+        // real-looking to meter in `--demo`.
+        let loopback_dev = SimDevice {
+            name: "",
+            rate: 48_000,
+            ppm: 0.0,
+            signal: Signal::Sine {
+                freq: 440.0,
+                amp: 0.18,
+            },
+        };
+        let is_loopback = name == loopback_name(LOOPBACK_OF);
+        let dev = if is_loopback {
+            &loopback_dev
+        } else {
+            INPUTS
+                .iter()
+                .find(|d| d.name == name)
+                .ok_or_else(|| format!("no such device: {name}"))?
+        };
         let stop = Arc::new(AtomicU64::new(0));
         let flag = stop.clone();
         let (rate, ppm, signal) = (dev.rate, dev.ppm, dev.signal);
@@ -181,6 +208,7 @@ impl AudioIo for SimIo {
         });
         Ok(Opened {
             rate,
+            loopback: is_loopback,
             keepalive: Box::new(Stop(stop)),
         })
     }
@@ -229,6 +257,7 @@ impl AudioIo for SimIo {
         });
         Ok(Opened {
             rate,
+            loopback: false,
             keepalive: Box::new(Stop(stop)),
         })
     }

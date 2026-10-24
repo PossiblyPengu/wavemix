@@ -492,7 +492,11 @@ impl IoState {
         let opened = self.io.open_input(name, prod)?;
         let rate = opened.rate;
         let target = (rate as u64 * self.latency_ms as u64 / 1000) as usize;
-        let reader = RateReader::new(cons, rate as f64, ENGINE_RATE as f64, target);
+        let mut reader = RateReader::new(cons, rate as f64, ENGINE_RATE as f64, target);
+        if opened.loopback {
+            // Windows sends nothing at all while a device is silent; that is not a dropout.
+            reader = reader.tolerate_silence();
+        }
         let _ = self.mix_tx.send(MixMsg::Feed(slot, Some(reader)));
         self.open_in[slot] = Some(OpenSlot {
             name: name.to_string(),

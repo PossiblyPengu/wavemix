@@ -48,6 +48,9 @@ pub struct RateReader {
     /// Turn the drift controller off (tests measuring the interpolator on its own).
     #[cfg(test)]
     adaptive: bool,
+    /// A source that sends nothing while it is silent (WASAPI loopback). An empty ring is then
+    /// normal, not a dropout.
+    tolerant: bool,
     pub underruns: u64,
     scratch: [f32; 2],
 }
@@ -67,9 +70,17 @@ impl RateReader {
             primed: false,
             #[cfg(test)]
             adaptive: true,
+            tolerant: false,
             underruns: 0,
             scratch: [0.0; 2],
         }
+    }
+
+    /// For sources that go quiet by sending nothing: starvation plays silence without counting a
+    /// dropout.
+    pub fn tolerate_silence(mut self) -> Self {
+        self.tolerant = true;
+        self
     }
 
     /// Frames currently waiting in the ring.
@@ -89,7 +100,9 @@ impl RateReader {
             [self.scratch[0], self.scratch[1]]
         } else {
             // Ran dry: hold the last sample rather than clicking to zero, and re-buffer.
-            self.underruns += 1;
+            if !self.tolerant {
+                self.underruns += 1;
+            }
             self.primed = false;
             self.hist[3]
         }
@@ -318,6 +331,37 @@ mod tests {
         }
         let snr_db = 10.0 * (sig / err.max(1e-30)).log10();
         assert!(snr_db > 55.0, "SNR {snr_db:.1} dB");
+    }
+
+    #[test]
+    fn a_silent_loopback_source_is_not_a_dropout() {
+        let (mut prod, cons) = ring(4096);
+        let mut reader = RateReader::new(cons, 48_000.0, 48_000.0, 480).tolerate_silence();
+        let mut buf = vec![0.0f32; 960];
+        write_frames(&mut prod, &vec![0.25f32; 1920]);
+        reader.read(&mut buf);
+        // The source goes quiet: nothing more arrives.
+        for _ in 0..20 {
+            reader.read(&mut buf);
+        }
+        assert_eq!(reader.underruns, 0, "silence is not an underrun");
+        assert!(buf.iter().all(|v| *v == 0.0), "and it plays as silence");
+        // Audio returns and plays again.
+        write_frames(&mut prod, &vec![0.25f32; 1920]);
+        reader.read(&mut buf);
+        assert!(buf.iter().any(|v| *v != 0.0));
+    }
+
+    #[test]
+    fn a_normal_reader_that_starves_counts_it() {
+        let (mut prod, cons) = ring(4096);
+        let mut reader = RateReader::new(cons, 48_000.0, 48_000.0, 480);
+        let mut buf = vec![0.0f32; 960];
+        write_frames(&mut prod, &vec![0.25f32; 1920]);
+        for _ in 0..10 {
+            reader.read(&mut buf);
+        }
+        assert!(reader.underruns > 0);
     }
 
     #[test]

@@ -21,27 +21,66 @@ use ui::MixerApp;
 /// console, so this is how to report what a given machine looks like.
 fn dump() -> std::io::Result<()> {
     use model::{Flow, Snapshot};
+    use std::collections::HashMap;
     use std::fmt::Write as _;
+    use std::time::{Duration, Instant};
 
     let mut engine = engine();
     engine.tick(true);
-    let snap: Snapshot = engine.tick(true);
-    let mut out = String::new();
+    let mut snap: Snapshot = engine.tick(true);
+    // Watch the meters for a few seconds, so the report says whether they ever moved. Play some
+    // audio while it runs.
+    let mut device_peak: HashMap<String, f32> = HashMap::new();
+    let mut session_peak: HashMap<String, f32> = HashMap::new();
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(4) {
+        snap = engine.tick(false);
+        for d in &snap.devices {
+            let e = device_peak.entry(d.id.clone()).or_default();
+            *e = e.max(d.peak);
+        }
+        for s in &snap.sessions {
+            let e = session_peak
+                .entry(format!("{}|{}", s.device_id, s.id))
+                .or_default();
+            *e = e.max(s.peak);
+        }
+        std::thread::sleep(Duration::from_millis(33));
+    }
+    let mut out = String::from(
+        "Highest meter reading seen over 4 s (0.000 = silent, 1.000 = full scale).\n\n",
+    );
     for d in &snap.devices {
         let flow = if d.flow == Flow::Render { "out" } else { "in " };
         let _ = writeln!(
             out,
-            "[{flow}] {} vol={:.2} muted={} default={}\n      id={}",
-            d.name, d.volume, d.muted, d.is_default, d.id
+            "[{flow}] {} vol={:.2} muted={} default={} peak={:.3}\n      id={}",
+            d.name,
+            d.volume,
+            d.muted,
+            d.is_default,
+            device_peak.get(&d.id).copied().unwrap_or(0.0),
+            d.id
         );
     }
     for s in &snap.sessions {
         let _ = writeln!(
             out,
-            "  app {:?} exe={:?} pid={} vol={:.2} muted={} active={} device={}",
-            s.name, s.exe, s.pid, s.volume, s.muted, s.active, s.device_id
+            "  app {:?} exe={:?} pid={} vol={:.2} muted={} active={} peak={:.3} device={}",
+            s.name,
+            s.exe,
+            s.pid,
+            s.volume,
+            s.muted,
+            s.active,
+            session_peak
+                .get(&format!("{}|{}", s.device_id, s.id))
+                .copied()
+                .unwrap_or(0.0),
+            s.device_id
         );
     }
+    let _ = writeln!(out, "\n{}", engine.diagnostics());
     let path = std::env::temp_dir().join("wavemix-dump.txt");
     std::fs::write(&path, out)?;
     println!("{}", path.display());
