@@ -10,7 +10,10 @@ use super::theme;
 use crate::model::{amp_to_db, db_to_meter, percent};
 
 pub const STRIP_W: f32 = 98.0;
-const TRACK_H: f32 = 196.0;
+/// Height of the fader track at the smallest sensible window.
+pub const MIN_TRACK_H: f32 = 140.0;
+/// Height of everything in a strip except the fader track (icon, name, readouts, buttons).
+pub const STRIP_CHROME_H: f32 = 150.0;
 const METER_W: f32 = 10.0;
 pub const ICON: f32 = 24.0;
 /// Fraction of full scale the peak marker falls per second.
@@ -34,6 +37,8 @@ pub struct Strip<'a> {
     pub muted: bool,
     pub peak: f32,
     pub accent: Color32,
+    /// Fader height; the console grows it to use the window's height.
+    pub track_h: f32,
     /// What to draw in the icon slot when there's no app icon (devices).
     pub glyph: Glyph,
     /// Green dot when the app is currently making sound; hollow when idle; none for devices.
@@ -105,7 +110,7 @@ impl Strip<'_> {
                 ui.label(egui::RichText::new(name).size(12.0).color(color))
                     .on_hover_text(self.title);
 
-                let (rect, _) = ui.allocate_exact_size(vec2(STRIP_W, TRACK_H), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(vec2(STRIP_W, self.track_h), Sense::hover());
                 self.fader(ui, rect, idle, &mut out);
 
                 let (txt, col) = if self.muted {

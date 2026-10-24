@@ -6,8 +6,10 @@ description = "A per-app and per-device audio mixer for Windows, with a Voicemee
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+ringbuf = "0.5.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+spin_sleep = "1.3.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.62"
@@ -40,6 +42,7 @@ windows-sys = { version = "0.61", features = [
 tray-icon = "0.26.1"
 global-hotkey = "0.9.0"
 winreg = "0.56.0"
+cpal = "0.18.2"
 
 [profile.release]
 opt-level = 3

@@ -2,6 +2,7 @@
 
 mod backend;
 mod config;
+mod engine;
 #[cfg(windows)]
 mod hotkeys;
 mod model;
