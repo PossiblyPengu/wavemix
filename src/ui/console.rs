@@ -334,6 +334,74 @@ impl MixerApp {
         }
     }
 
+    /// Simple mode's "play through" row: tick the outputs you want (speakers, headphones, or both)
+    /// and the mixer does the rest: engine on, Windows routed through it, system audio sent to
+    /// exactly those outputs. Unticking the last one gives Windows back its own default.
+    pub(super) fn output_switch(&mut self, ui: &mut Ui) {
+        let devices = self.engine.devices();
+        let hardware: Vec<&DeviceInfo> = devices
+            .outputs
+            .iter()
+            .filter(|d| !d.is_virtual && !d.is_loopback)
+            .collect();
+        let (routed, cable) = self.route_state();
+        if hardware.len() < 2 || (cable.is_none() && !routed) {
+            return;
+        }
+        let running = self.engine.is_running();
+        let active: Vec<String> = if running && routed {
+            self.config.engine.io.outputs[..3].iter().flatten().cloned().collect()
+        } else {
+            Vec::new()
+        };
+        let mut next = active.clone();
+        ui.label(RichText::new("PLAY THROUGH").size(11.0).strong().color(theme::TEXT_DIM));
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            for d in &hardware {
+                let on = active.contains(&d.name);
+                if strip::toggle(ui, strip::short_device_name(&d.name), on, vec2(150.0, 26.0), theme::ACCENT)
+                    .on_hover_text("Tick more than one to play on all of them at once")
+                    .clicked()
+                {
+                    if on {
+                        next.retain(|n| n != &d.name);
+                    } else if next.len() < 3 {
+                        next.push(d.name.clone());
+                    }
+                }
+            }
+        });
+        if next == active {
+            return;
+        }
+        if next.is_empty() {
+            self.unroute_windows_audio();
+            return;
+        }
+        self.auto_configure();
+        for b in 0..3 {
+            let dev = next.get(b).cloned();
+            self.config.engine.io.outputs[b] = dev.clone();
+            self.engine.set_output(b, dev);
+        }
+        let mut params = self.engine.params();
+        for (b, send) in params.strips[HARDWARE_STRIPS].sends.iter_mut().take(3).enumerate() {
+            *send = b < next.len();
+        }
+        for b in 0..next.len() {
+            params.buses[b].mute = false;
+        }
+        self.commit_params(params);
+        self.config.engine.io.engine_on = true;
+        self.engine.set_running(true);
+        if !routed {
+            if let Some(cable) = cable {
+                self.route_windows_audio(&cable);
+            }
+        }
+    }
+
     fn route_windows_audio(&mut self, cable: &crate::model::Device) {
         let snap = self.backend.snapshot();
         self.config.restore_playback = snap
@@ -429,7 +497,7 @@ impl MixerApp {
     /// First run: pick sensible devices so the mixer works without any setup. A real microphone
     /// goes to Input 1 (and to B1, so chat apps hear it), the default speakers to A1, and if a
     /// virtual cable is installed it becomes Virtual 1 / B1.
-    fn auto_configure(&mut self) {
+    pub(super) fn auto_configure(&mut self) {
         if self.config.engine.configured {
             return;
         }
