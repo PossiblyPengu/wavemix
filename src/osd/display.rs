@@ -76,6 +76,8 @@ pub struct OsdSettings {
     pub accent_system: bool,
     /// Percentage points per wheel notch.
     pub volume_step: u32,
+    /// Hide Windows' own volume popup while ours is up.
+    pub hide_windows_popup: bool,
 }
 
 /// What the display asks of the app.
@@ -356,6 +358,9 @@ impl State {
     unsafe fn show(&mut self, backend: &Handle, shared: &Shared, cfg: &OsdSettings) {
         if fullscreen_foreground() {
             return;
+        }
+        if cfg.hide_windows_popup {
+            super::winosd::hide_for_a_moment();
         }
         self.hide_at = Some(Instant::now() + Duration::from_millis(cfg.timeout_ms as u64));
         if self.animating {

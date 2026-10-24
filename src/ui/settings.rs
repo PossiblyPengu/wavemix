@@ -176,6 +176,7 @@ impl MixerApp {
             let mut opacity = self.config.osd_opacity;
             let mut timeout = self.config.osd_timeout_ms;
             let mut accent = self.config.osd_accent_system;
+            let mut hide_win = self.config.hide_windows_osd;
             let mut position = self.config.osd_position;
             let mut changed = ui.checkbox(&mut osd, "Show the volume bar").changed();
             ui.horizontal(|ui| {
@@ -211,6 +212,14 @@ impl MixerApp {
                 .checkbox(&mut accent, "Match the Windows accent colour")
                 .changed();
             changed |= ui
+                .checkbox(&mut hide_win, "Hide Windows' own volume popup")
+                .on_hover_text(
+                    "Stops the Windows volume overlay appearing on top of this bar. Best effort: \
+                     it hides the overlay if Windows opens it. If it still shows, tell me, and \
+                     send %TEMP%\\wavemix-winosd.txt.",
+                )
+                .changed();
+            changed |= ui
                 .add(egui::Slider::new(&mut opacity, 40..=100).text("Opacity %"))
                 .changed();
             changed |= ui
@@ -226,6 +235,7 @@ impl MixerApp {
                 self.config.osd_opacity = opacity;
                 self.config.osd_timeout_ms = timeout;
                 self.config.osd_accent_system = accent;
+                self.config.hide_windows_osd = hide_win;
                 self.config.osd_position = position;
                 self.config.save();
                 self.sync_osd();

@@ -104,6 +104,8 @@ pub struct Config {
     pub osd_timeout_ms: u32,
     /// Draw the OSD in the Windows accent colour.
     pub osd_accent_system: bool,
+    /// Hide Windows' own volume popup whenever the wavemix bar is shown.
+    pub hide_windows_osd: bool,
     /// Offer to bring a Voicemeeter setup over, until the user does or says no.
     pub voicemeeter_offer: bool,
     /// Windows' default playback device from before "Route Windows audio" moved it to a virtual
@@ -132,6 +134,7 @@ impl Default for Config {
             osd_y: 0,
             osd_timeout_ms: 1500,
             osd_accent_system: true,
+            hide_windows_osd: true,
             voicemeeter_offer: true,
             restore_playback: None,
             auto_route: false,

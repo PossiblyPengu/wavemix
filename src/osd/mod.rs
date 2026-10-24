@@ -5,6 +5,8 @@
 mod display;
 #[cfg(windows)]
 mod gfx;
+#[cfg(windows)]
+mod winosd;
 pub mod layout;
 pub mod wheel;
 
