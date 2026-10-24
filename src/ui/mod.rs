@@ -63,11 +63,20 @@ pub struct MixerApp {
     vm_installed: bool,
     switch: switch::SwitchState,
     preset_name: String,
+    /// Strip or bus whose name is being typed over, and the text so far.
+    renaming: Option<(Rename, usize)>,
+    rename_buf: String,
     /// Hotkey text being edited in settings; applied with the Apply button.
     #[cfg(windows)]
     hk_edit: crate::config::Hotkeys,
     #[cfg(windows)]
     shell: shell::ShellState,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rename {
+    Strip,
+    Bus,
 }
 
 /// A normal window, or the borderless popup that appears from the tray icon.
@@ -142,6 +151,8 @@ impl MixerApp {
                 ..Default::default()
             },
             preset_name: String::new(),
+            renaming: None,
+            rename_buf: String::new(),
             #[cfg(windows)]
             hk_edit,
             #[cfg(windows)]
@@ -249,13 +260,68 @@ impl MixerApp {
 
     /// The pill showing which device an app plays through. Clicking it opens the output picker;
     /// if routing hasn't been turned on yet, it explains and offers to.
+    /// A device's name for display: yours if you gave it one, else Windows' name made short (and
+    /// kept distinct from similar devices in `all`).
+    fn device_label<'a>(&self, name: &str, all: impl IntoIterator<Item = &'a str>) -> String {
+        match self.config.device_alias(name) {
+            Some(alias) => alias.to_string(),
+            None => strip::label_among(name, all),
+        }
+    }
+
+    /// A strip's or bus's title. Double-click to type a new name; Enter or clicking away keeps it,
+    /// Esc cancels, and an empty name goes back to the default.
+    fn title_label(&mut self, ui: &mut Ui, kind: Rename, i: usize, color: Option<egui::Color32>) {
+        if self.renaming == Some((kind, i)) {
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.rename_buf)
+                    .desired_width(70.0)
+                    .char_limit(24),
+            );
+            let cancelled = ui.input(|inp| inp.key_pressed(egui::Key::Escape));
+            if resp.lost_focus() || cancelled {
+                if !cancelled {
+                    let names = match kind {
+                        Rename::Strip => &mut self.config.strip_names,
+                        Rename::Bus => &mut self.config.bus_names,
+                    };
+                    if names.len() <= i {
+                        names.resize(i + 1, String::new());
+                    }
+                    names[i] = self.rename_buf.trim().to_string();
+                    self.config.save();
+                }
+                self.renaming = None;
+            } else if !resp.has_focus() {
+                resp.request_focus();
+            }
+            return;
+        }
+        let title = match kind {
+            Rename::Strip => self.config.strip_title(i),
+            Rename::Bus => self.config.bus_title(i),
+        };
+        let shown = strip::truncate(ui, &title, 78.0, 13.0);
+        let mut text = RichText::new(shown).size(13.0).strong();
+        if let Some(c) = color {
+            text = text.color(c);
+        }
+        let resp = ui
+            .add(egui::Label::new(text).sense(egui::Sense::click()))
+            .on_hover_text(format!("{title}\nDouble-click to rename"));
+        if resp.double_clicked() {
+            self.rename_buf = title;
+            self.renaming = Some((kind, i));
+        }
+    }
+
     fn device_chip(&mut self, ui: &mut Ui, snap: &Snapshot, app: &AppStrip, width: f32) {
         let name = snap
             .devices
             .iter()
             .find(|d| d.id == app.device_id)
             .map(|d| {
-                strip::label_among(
+                self.device_label(
                     &d.name,
                     snap.devices
                         .iter()
@@ -293,7 +359,10 @@ impl MixerApp {
             for d in snap.devices.iter().filter(|d| d.flow == Flow::Render) {
                 let label = format!(
                     "{}{}",
-                    d.name,
+                    match self.config.device_alias(&d.name) {
+                        Some(alias) => format!("{alias}  ({})", d.name),
+                        None => d.name.clone(),
+                    },
                     if d.is_default {
                         "  (default)"
                     } else if crate::engine::io::looks_virtual(&d.name) {

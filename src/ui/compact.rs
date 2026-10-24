@@ -124,7 +124,7 @@ impl MixerApp {
                         let resp =
                             strip::chip(
                                 ui,
-                                &strip::label_among(&dev.name, outputs.iter().map(|d| d.name.as_str())),
+                                &self.device_label(&dev.name, outputs.iter().map(|d| d.name.as_str())),
                                 width,
                                 false,
                             )
@@ -134,7 +134,10 @@ impl MixerApp {
                             for d in outputs {
                                 let label = format!(
                                     "{}{}",
-                                    d.name,
+                                    match self.config.device_alias(&d.name) {
+                                        Some(alias) => format!("{alias}  ({})", d.name),
+                                        None => d.name.clone(),
+                                    },
                                     if d.is_default { "  (default)" } else { "" }
                                 );
                                 if ui.selectable_label(d.id == dev.id, label).clicked() {

@@ -11,7 +11,7 @@ use super::{theme, MixerApp};
 use crate::engine::dsp::eq_response_db;
 use crate::engine::io::{feeds_itself, DeviceInfo};
 use crate::engine::params::{
-    bus_name, strip_name, EngineParams, EqParams, StripParams, BUSES, HARDWARE_STRIPS, STRIPS,
+    bus_name, EngineParams, EqParams, StripParams, BUSES, HARDWARE_STRIPS, STRIPS,
 };
 use crate::engine::runtime::{Devices, SlotStatus, Stats, Status, ENGINE_RATE};
 
@@ -392,7 +392,7 @@ impl MixerApp {
         ui.horizontal_wrapped(|ui| {
             for d in &hardware {
                 let on = active.contains(&d.name);
-                let label = strip::label_among(&d.name, hardware.iter().map(|h| h.name.as_str()));
+                let label = self.device_label(&d.name, hardware.iter().map(|h| h.name.as_str()));
                 let label = strip::truncate(ui, &label, 150.0, 11.5);
                 if strip::toggle(ui, &label, on, vec2(170.0, 28.0), theme::ACCENT)
                     .on_hover_text(format!(
@@ -645,7 +645,7 @@ impl MixerApp {
         want_virtual: bool,
     ) -> Option<Option<String>> {
         let text = match current {
-            Some(n) => strip::label_among(n, list.iter().map(|d| d.name.as_str())),
+            Some(n) => self.device_label(n, list.iter().map(|d| d.name.as_str())),
             None => "Select device".to_string(),
         };
         let resp = strip::chip(ui, &text, CONSOLE_STRIP_W - 4.0, current.is_some()).on_hover_text(
@@ -686,7 +686,10 @@ impl MixerApp {
                 for d in group {
                     let label = format!(
                         "{}{}",
-                        d.name,
+                        match self.config.device_alias(&d.name) {
+                            Some(alias) => format!("{alias}  ({})", d.name),
+                            None => d.name.clone(),
+                        },
                         if d.is_default { "  (default)" } else { "" }
                     );
                     if ui
@@ -750,7 +753,7 @@ impl MixerApp {
             ui.set_width(CONSOLE_STRIP_W);
             ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(strip_name(i)).size(13.0).strong());
+                self.title_label(ui, super::Rename::Strip, i, None);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     self.status_dot(ui, &status.inputs[i]);
                 });
@@ -801,7 +804,10 @@ impl MixerApp {
             });
 
             // Where this strip goes (and its pan and mono), in a menu.
-            let sends: Vec<&str> = (0..BUSES).filter(|b| p.sends[*b]).map(bus_name).collect();
+            let sends: Vec<String> = (0..BUSES)
+                .filter(|b| p.sends[*b])
+                .map(|b| self.config.bus_title(b))
+                .collect();
             let summary = match sends.len() {
                 0 => "Sends nowhere".to_string(),
                 1..=3 => format!("To {}", sends.join(" ")),
@@ -891,12 +897,7 @@ impl MixerApp {
             ui.set_width(CONSOLE_STRIP_W);
             ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(bus_name(b))
-                        .size(13.0)
-                        .strong()
-                        .color(BUS_COLORS[b]),
-                );
+                self.title_label(ui, super::Rename::Bus, b, Some(BUS_COLORS[b]));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     self.status_dot(ui, &status.outputs[b]);
                 });
@@ -983,7 +984,7 @@ impl MixerApp {
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(strip_name(i)).size(13.0).strong());
+                    ui.label(RichText::new(self.config.strip_title(i)).size(13.0).strong());
                     ui.add_space(8.0);
                     for (t, label) in [
                         (EditorTab::Eq, "Equalizer"),

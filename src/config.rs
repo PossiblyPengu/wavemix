@@ -1,5 +1,6 @@
 //! Small persisted settings, stored as JSON next to the user's other app data.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -106,6 +107,11 @@ pub struct Config {
     pub osd_accent_system: bool,
     /// Hide Windows' own volume popup whenever the wavemix bar is shown.
     pub hide_windows_osd: bool,
+    /// Names you gave devices, keyed by the name Windows gives them.
+    pub device_names: BTreeMap<String, String>,
+    /// Names you gave mixer strips and buses; an empty entry means the default ("Input 1", "A1").
+    pub strip_names: Vec<String>,
+    pub bus_names: Vec<String>,
     /// Offer to bring a Voicemeeter setup over, until the user does or says no.
     pub voicemeeter_offer: bool,
     /// Windows' default playback device from before "Route Windows audio" moved it to a virtual
@@ -135,6 +141,9 @@ impl Default for Config {
             osd_timeout_ms: 1500,
             osd_accent_system: true,
             hide_windows_osd: true,
+            device_names: BTreeMap::new(),
+            strip_names: Vec::new(),
+            bus_names: Vec::new(),
             voicemeeter_offer: true,
             restore_playback: None,
             auto_route: false,
@@ -207,5 +216,50 @@ mod tests {
         });
         let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back.presets, c.presets);
+    }
+}
+
+impl Config {
+    /// What to call a device: the name you gave it, if any.
+    pub fn device_alias(&self, windows_name: &str) -> Option<&str> {
+        self.device_names
+            .get(windows_name)
+            .map(String::as_str)
+            .filter(|n| !n.trim().is_empty())
+    }
+
+    pub fn strip_title(&self, i: usize) -> String {
+        match self.strip_names.get(i).map(|n| n.trim()) {
+            Some(n) if !n.is_empty() => n.to_string(),
+            _ => crate::engine::params::strip_name(i),
+        }
+    }
+
+    pub fn bus_title(&self, i: usize) -> String {
+        match self.bus_names.get(i).map(|n| n.trim()) {
+            Some(n) if !n.is_empty() => n.to_string(),
+            _ => crate::engine::params::bus_name(i).to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn custom_names_win_and_blank_ones_fall_back() {
+        let mut c = Config::default();
+        assert_eq!(c.strip_title(0), "Input 1");
+        assert_eq!(c.bus_title(0), "A1");
+        c.strip_names = vec!["Mic".into(), "  ".into()];
+        c.bus_names = vec!["Desk".into()];
+        assert_eq!(c.strip_title(0), "Mic");
+        assert_eq!(c.strip_title(1), "Input 2");
+        assert_eq!(c.bus_title(0), "Desk");
+        assert_eq!(c.bus_title(1), "A2");
+        c.device_names.insert("Speakers (Logi Z407)".into(), "Desk speakers".into());
+        assert_eq!(c.device_alias("Speakers (Logi Z407)"), Some("Desk speakers"));
+        assert_eq!(c.device_alias("Other"), None);
     }
 }

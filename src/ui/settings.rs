@@ -2,7 +2,7 @@
 
 use eframe::egui::{self, RichText, Ui};
 
-use super::{theme, MixerApp};
+use super::{strip, theme, MixerApp};
 #[cfg(windows)]
 use crate::config::OsdPosition;
 use crate::model::Snapshot;
@@ -239,6 +239,51 @@ impl MixerApp {
                 self.config.osd_position = position;
                 self.config.save();
                 self.sync_osd();
+            }
+        }
+
+        section(ui, "Names");
+        hint(
+            ui,
+            "Call your devices whatever you like; the new name shows everywhere. Double-click a \
+             strip or bus name in Pro mode to rename it. Leave a box empty for the default.",
+        );
+        {
+            let snap = self.backend.snapshot();
+            let mut seen = std::collections::BTreeSet::new();
+            let mut names: Vec<String> = Vec::new();
+            for d in &snap.devices {
+                if seen.insert(d.name.clone()) {
+                    names.push(d.name.clone());
+                }
+            }
+            let mut changed = false;
+            for name in names {
+                let mut text = self.config.device_names.get(&name).cloned().unwrap_or_default();
+                ui.vertical(|ui| {
+                    let hint_text = strip::short_device_name(&name).to_string();
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut text)
+                            .hint_text(hint_text)
+                            .desired_width(ui.available_width().min(260.0))
+                            .char_limit(32),
+                    );
+                    ui.label(RichText::new(&name).size(11.0).color(theme::TEXT_DIM));
+                    if edit.changed() {
+                        changed = true;
+                    }
+                });
+                if changed {
+                    if text.trim().is_empty() {
+                        self.config.device_names.remove(&name);
+                    } else {
+                        self.config.device_names.insert(name, text);
+                    }
+                    break;
+                }
+            }
+            if changed {
+                self.config.save();
             }
         }
 
