@@ -87,8 +87,11 @@ const OUTPUTS: &[SimDevice] = &[
 /// Everything played to a simulated output, for tests to inspect.
 pub type Tap = Arc<Mutex<Vec<f32>>>;
 
+/// Every output's tap, by device name.
+pub type Taps = Arc<Mutex<Vec<(String, Tap)>>>;
+
 pub struct SimIo {
-    taps: Arc<Mutex<Vec<(String, Tap)>>>,
+    taps: Taps,
 }
 
 impl SimIo {
@@ -99,7 +102,8 @@ impl SimIo {
     }
 
     /// Handle for reading back what an output received. Valid after `open_output`.
-    pub fn taps(&self) -> Arc<Mutex<Vec<(String, Tap)>>> {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn taps(&self) -> Taps {
         self.taps.clone()
     }
 

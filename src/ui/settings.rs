@@ -80,14 +80,6 @@ impl MixerApp {
                 }
             }
         }
-        let mut idle = self.config.show_idle;
-        if ui
-            .checkbox(&mut idle, "Show apps that aren't playing (Mixer view)")
-            .changed()
-        {
-            self.config.show_idle = idle;
-            self.config.save();
-        }
         let mut routing = self.config.experimental_routing;
         if ui
             .checkbox(&mut routing, "Let me send each app to a different output")

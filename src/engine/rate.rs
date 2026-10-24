@@ -73,11 +73,13 @@ impl RateReader {
     }
 
     /// Frames currently waiting in the ring.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn fill_frames(&self) -> usize {
         self.cons.occupied_len() / 2
     }
 
     /// Current correction factor (0 = clocks agree), for diagnostics.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn adjust(&self) -> f64 {
         self.adjust
     }

@@ -171,6 +171,7 @@ impl Engine {
     }
 
     /// Edit the parameters in place.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn update_params(&self, f: impl FnOnce(&mut EngineParams)) {
         f(&mut lock(&self.shared.params));
         self.shared.version.fetch_add(1, Ordering::Release);
@@ -378,7 +379,14 @@ fn io_thread(
                 st.retry_out[b] = None;
             }
             Ok(IoCmd::SetRunning(on)) => st.running = on,
-            Ok(IoCmd::SetLatency(ms)) => st.latency_ms = ms.clamp(10, 200),
+            Ok(IoCmd::SetLatency(ms)) => {
+                let ms = ms.clamp(10, 200);
+                if ms != st.latency_ms {
+                    st.latency_ms = ms;
+                    // Targets are fixed when a stream opens, so reopen everything.
+                    st.close_all();
+                }
+            }
             Ok(IoCmd::Refresh) => last_refresh = Instant::now() - DEVICE_REFRESH,
             Err(RecvTimeoutError::Timeout) => {}
         }
@@ -494,6 +502,15 @@ impl IoState {
         Ok(rate)
     }
 
+    fn close_all(&mut self) {
+        for i in 0..STRIPS {
+            self.close_input(i);
+        }
+        for b in 0..BUSES {
+            self.close_output(b);
+        }
+    }
+
     fn close_input(&mut self, slot: usize) {
         let _ = self.mix_tx.send(MixMsg::Feed(slot, None));
         self.open_in[slot] = None;
@@ -527,7 +544,7 @@ impl IoState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::sim::SimIo;
+    use crate::engine::sim::{SimIo, Taps};
 
     const MIC: &str = "Microphone (Sim USB)";
     const LINE: &str = "Line In (Sim Audio)";
@@ -538,7 +555,7 @@ mod tests {
         inputs: &[(usize, &str)],
         outputs: &[(usize, &str)],
         params: EngineParams,
-    ) -> (Engine, Arc<Mutex<Vec<(String, crate::engine::sim::Tap)>>>) {
+    ) -> (Engine, Taps) {
         let sim = SimIo::new();
         let taps = sim.taps();
         let mut cfg = IoConfig {
@@ -554,7 +571,7 @@ mod tests {
         (Engine::start(move || Box::new(sim), cfg, params), taps)
     }
 
-    fn tap_of(taps: &Arc<Mutex<Vec<(String, crate::engine::sim::Tap)>>>, name: &str) -> Vec<f32> {
+    fn tap_of(taps: &Taps, name: &str) -> Vec<f32> {
         let t = lock(taps);
         let tap = t.iter().find(|(n, _)| n == name).expect("tap").1.clone();
         let v = lock(&tap).clone();

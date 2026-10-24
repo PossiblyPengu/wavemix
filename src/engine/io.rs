@@ -23,10 +23,30 @@ pub fn looks_virtual(name: &str) -> bool {
         .any(|k| n.contains(k))
 }
 
+/// The part of a device name inside the last pair of parentheses: for VB-Cable, the cable's own
+/// name, which both ends share ("CABLE Input (VB-Audio Virtual Cable)" and "CABLE Output
+/// (VB-Audio Virtual Cable)").
+fn cable_key(name: &str) -> Option<&str> {
+    let open = name.rfind('(')?;
+    let close = name.rfind(')')?;
+    (close > open + 1).then(|| name[open + 1..close].trim())
+}
+
+/// True when `input` is the recording end of the same virtual cable that `output` plays into.
+/// Routing a strip that listens to that input onto that output would feed the mix back into
+/// itself, which howls.
+pub fn same_cable(input: &str, output: &str) -> bool {
+    looks_virtual(input)
+        && looks_virtual(output)
+        && matches!((cable_key(input), cable_key(output)), (Some(a), Some(b)) if a == b)
+}
+
 /// A running capture or playback stream. Dropping it stops the stream.
 pub struct Opened {
     /// The device's own sample rate.
     pub rate: u32,
+    /// Held only to keep the stream running; dropping it stops the device.
+    #[allow(dead_code)]
     pub keepalive: Box<dyn Any>,
 }
 
@@ -54,7 +74,27 @@ pub trait AudioIo {
 
 #[cfg(test)]
 mod tests {
-    use super::looks_virtual;
+    use super::{looks_virtual, same_cable};
+
+    #[test]
+    fn a_cables_two_ends_form_a_loop_but_other_pairs_do_not() {
+        let out_a = "CABLE Output (VB-Audio Virtual Cable)";
+        let in_a = "CABLE Input (VB-Audio Virtual Cable)";
+        let out_b = "CABLE-A Output (VB-Audio Cable A)";
+        let in_b = "CABLE-A Input (VB-Audio Cable A)";
+        assert!(same_cable(out_a, in_a));
+        assert!(same_cable(out_b, in_b));
+        assert!(!same_cable(out_a, in_b), "different cables are independent");
+        assert!(!same_cable(
+            "Microphone (Blue Yeti)",
+            "Speakers (Blue Yeti)"
+        ));
+        assert!(!same_cable(out_a, "Speakers (Realtek)"));
+        assert!(
+            !same_cable("CABLE Output", "CABLE Input"),
+            "no key, no claim"
+        );
+    }
 
     #[test]
     fn recognises_virtual_cables() {

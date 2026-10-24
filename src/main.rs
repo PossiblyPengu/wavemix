@@ -82,6 +82,20 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
+    // The mixing engine: real devices on Windows, simulated ones elsewhere and in --demo.
+    let engine = engine::runtime::Engine::start(
+        move || -> Box<dyn engine::io::AudioIo> {
+            #[cfg(windows)]
+            if !demo {
+                return Box::new(engine::cpal_io::CpalIo::new());
+            }
+            Box::new(engine::sim::SimIo::new())
+        },
+        config.engine.io.clone(),
+        config.engine.params.clone(),
+    );
+    engine.set_latency_ms(config.engine.latency_ms);
+
     eframe::run_native(
         "wavemix",
         options,
@@ -99,7 +113,7 @@ fn main() -> eframe::Result {
                 unreachable!("demo is always set off Windows")
             };
             Ok(Box::new(MixerApp::new(
-                cc, handle, config, demo, background,
+                cc, handle, engine, config, demo, background,
             )))
         }),
     )

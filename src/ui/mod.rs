@@ -9,7 +9,8 @@ use eframe::egui::{self, vec2, Align, Id, Layout, RichText, TextureHandle, Ui};
 
 use crate::backend::Handle;
 use crate::config::{Config, View};
-use crate::model::{group_sessions, AppStrip, Command, Device, Flow, IconData, Snapshot};
+use crate::engine::runtime::Engine;
+use crate::model::{group_sessions, AppStrip, Command, Flow, IconData, Snapshot};
 
 mod compact;
 mod console;
@@ -21,11 +22,16 @@ mod theme;
 
 use strip::StripOutput;
 
-const CONSOLE_SIZE: [f32; 2] = [1340.0, 560.0];
+const CONSOLE_SIZE: [f32; 2] = [1360.0, 840.0];
 const COMPACT_SIZE: [f32; 2] = [390.0, 660.0];
 
 pub struct MixerApp {
     backend: Handle,
+    engine: Engine,
+    /// Strip whose processing editor (EQ / gate / compressor) is open, if any.
+    editing: Option<(usize, console::EditorTab)>,
+    /// When settings last changed and haven't been written to disk yet.
+    engine_dirty_at: Option<std::time::Instant>,
     config: Config,
     demo: bool,
     /// Device the compact view's top card controls; `None` follows the default playback device.
@@ -54,6 +60,7 @@ impl MixerApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         backend: Handle,
+        engine: Engine,
         config: Config,
         demo: bool,
         background: bool,
@@ -68,6 +75,18 @@ impl MixerApp {
         #[cfg_attr(not(windows), allow(unused_mut))]
         let mut app = Self {
             backend,
+            engine,
+            // `--editor eq|gate|comp` opens Input 1's processing editor on launch.
+            editing: std::env::args()
+                .skip_while(|a| a != "--editor")
+                .nth(1)
+                .and_then(|t| match t.as_str() {
+                    "eq" => Some((0, console::EditorTab::Eq)),
+                    "gate" => Some((0, console::EditorTab::Gate)),
+                    "comp" => Some((0, console::EditorTab::Comp)),
+                    _ => None,
+                }),
+            engine_dirty_at: None,
             config,
             demo,
             compact_device: None,
@@ -205,7 +224,13 @@ impl MixerApp {
                 let label = format!(
                     "{}{}",
                     d.name,
-                    if d.is_default { "  (default)" } else { "" }
+                    if d.is_default {
+                        "  (default)"
+                    } else if crate::engine::io::looks_virtual(&d.name) {
+                        "  - virtual cable, feeds the mixer"
+                    } else {
+                        ""
+                    }
                 );
                 if ui.selectable_label(d.id == app.device_id, label).clicked() {
                     self.backend.send(Command::SetAppDevice {
@@ -224,38 +249,6 @@ impl MixerApp {
                 ui.close();
             }
         });
-    }
-
-    /// Under a device strip: a "Default" badge, or a button to make it the default.
-    fn default_badge(&self, ui: &mut Ui, d: &Device, width: f32) {
-        if d.is_default {
-            let (rect, _) = ui.allocate_exact_size(vec2(width, 24.0), egui::Sense::hover());
-            ui.painter().rect_stroke(
-                rect,
-                egui::CornerRadius::same(12),
-                egui::Stroke::new(1.0, theme::ACCENT),
-                egui::StrokeKind::Inside,
-            );
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "Default",
-                egui::FontId::proportional(11.0),
-                theme::ACCENT,
-            );
-        } else if ui
-            .add_sized(
-                [width, 24.0],
-                egui::Button::new(RichText::new("Set default").size(11.0)).corner_radius(12),
-            )
-            .on_hover_text("Make this the default device in Windows")
-            .clicked()
-        {
-            self.backend.send(Command::SetDefaultDevice {
-                id: d.id.clone(),
-                flow: d.flow,
-            });
-        }
     }
 
     // --- chrome --------------------------------------------------------------------------------
@@ -289,13 +282,13 @@ impl MixerApp {
                 for (view, label, tip) in [
                     (
                         View::Compact,
-                        "Compact",
-                        "Simple list, like the Windows volume popup",
+                        "Apps",
+                        "Per-app volume and output, like the Windows volume popup",
                     ),
                     (
                         View::Console,
                         "Mixer",
-                        "Full console with faders and meters",
+                        "The mixing console: inputs, buses, EQ and dynamics",
                     ),
                 ] {
                     let selected = self.config.view == view;
@@ -330,11 +323,17 @@ impl eframe::App for MixerApp {
                 self.top_bar(ui, &snap);
                 ui.add_space(8.0);
                 match self.view() {
-                    View::Console => self.console(ui, &snap),
+                    View::Console => self.console(ui),
                     View::Compact => self.compact(ui, &snap),
                 }
             });
         self.settings_window(ui.ctx());
+        self.flush_engine_config(ui.ctx());
+        if self.view() == View::Console {
+            // Meters move constantly.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(33));
+        }
     }
 }
 

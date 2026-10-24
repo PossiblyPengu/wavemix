@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::params::{EngineParams, IoConfig};
 use crate::preset::Preset;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,9 +35,36 @@ impl Default for Hotkeys {
     }
 }
 
+/// The mixing engine's saved state: which devices, every strip and bus setting.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EngineConfig {
+    pub io: IoConfig,
+    pub params: EngineParams,
+    /// Latency target per device link, in milliseconds.
+    pub latency_ms: u32,
+    /// False until the first run has picked sensible default devices.
+    pub configured: bool,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            io: IoConfig {
+                engine_on: true,
+                ..IoConfig::default()
+            },
+            params: EngineParams::default(),
+            latency_ms: crate::engine::runtime::DEFAULT_LATENCY_MS,
+            configured: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub engine: EngineConfig,
     pub view: View,
     pub run_at_startup: bool,
     pub hotkeys: Hotkeys,
@@ -47,8 +75,6 @@ pub struct Config {
     pub presets: Vec<Preset>,
     /// Show the on-screen volume display when a hotkey changes the volume.
     pub osd: bool,
-    /// Console view: list apps that aren't currently playing.
-    pub show_idle: bool,
     pub osd_vertical: bool,
     /// OSD opacity, percent.
     pub osd_opacity: u32,
@@ -57,6 +83,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            engine: EngineConfig::default(),
             view: View::default(),
             run_at_startup: false,
             hotkeys: Hotkeys::default(),
@@ -64,7 +91,6 @@ impl Default for Config {
             experimental_routing: false,
             presets: Vec::new(),
             osd: true,
-            show_idle: true,
             osd_vertical: false,
             osd_opacity: 95,
         }
