@@ -82,10 +82,22 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
 - `--demo` runs against simulated devices (with deliberately drifting clocks); `--dump` writes the
   devices and apps it sees to `%TEMP%\wavemix-dump.txt`, for bug reports.
 
+- **Sound shaping**: each strip has a gate, a 3-band EQ, a compressor and **noise removal**
+  (a small neural network trained on speech, for microphones); each output has a **six-band
+  parametric EQ**, a limiter and a delay. **Ducking** turns app sound down while you talk.
+  **Bypass FX** skips every gate, EQ and compressor so you can hear what they do.
+- **Recording**: record any output to a 24-bit WAV in `Music\Wavemix`.
+- **Remote control**: an optional local web interface (off by default, this PC only, secret token)
+  so a Stream Deck or script can change volumes, presets, ducking, recording and the keyboard
+  actions. See Settings > Remote control for the addresses.
+
 ## Not yet
 
-Hotkeys that drive bus A1 instead of the Windows volume, macro buttons, a parametric EQ with more
-bands, bus EQ, ASIO/WDM-exclusive devices for lower latency, and recording.
+Wavemix runs in Windows' shared audio mode through a virtual cable, so it can't match Voicemeeter's
+ASIO / exclusive-mode latency, and it ships no virtual-device driver of its own (install VB-Cable).
+Also missing: VST plug-ins, surround or multi-channel inputs, MIDI control, a spatial-audio
+effect, and a code-signed installer (the release workflow signs automatically once a certificate
+is added as a repository secret).
 
 ## Switching from Voicemeeter
 

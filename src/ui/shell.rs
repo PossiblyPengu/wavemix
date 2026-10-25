@@ -289,7 +289,7 @@ impl MixerApp {
         }
     }
 
-    fn run_hotkey(&mut self, action: HotkeyAction) {
+    pub(super) fn run_hotkey(&mut self, action: HotkeyAction) {
         let step = self.config.volume_step as f32 / 100.0;
         match action {
             HotkeyAction::VolumeUp | HotkeyAction::VolumeDown | HotkeyAction::ToggleMute => {

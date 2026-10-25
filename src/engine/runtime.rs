@@ -102,6 +102,7 @@ pub struct Stats {
 }
 
 enum IoCmd {
+    Record(Option<(usize, HeapProd<f32>)>),
     SetInput(usize, Option<String>),
     SetOutput(usize, Option<String>),
     SetRunning(bool),
@@ -113,12 +114,15 @@ enum IoCmd {
 enum MixMsg {
     Feed(usize, Option<RateReader>),
     Sink(usize, Option<HeapProd<f32>>),
+    /// Start (or stop) copying a bus to a recording.
+    Record(Option<(usize, HeapProd<f32>)>),
 }
 
 pub struct Engine {
     shared: Arc<Shared>,
     io_tx: Sender<IoCmd>,
     shutdown: Arc<AtomicBool>,
+    recording: Mutex<Option<super::record::Recording>>,
 }
 
 impl Engine {
@@ -164,6 +168,7 @@ impl Engine {
             shared,
             io_tx,
             shutdown,
+            recording: Mutex::new(None),
         }
     }
 
@@ -218,6 +223,31 @@ impl Engine {
 
     pub fn set_output(&self, bus: usize, device: Option<String>) {
         let _ = self.io_tx.send(IoCmd::SetOutput(bus, device));
+    }
+
+    /// Start recording `bus` to `path` (a WAV file). Replaces any recording already running.
+    pub fn start_recording(&self, bus: usize, path: std::path::PathBuf) -> Result<(), String> {
+        let _ = self.stop_recording();
+        let (rec, prod) =
+            super::record::Recording::start(bus.min(BUSES - 1), path).map_err(|e| e.to_string())?;
+        let _ = self.io_tx.send(IoCmd::Record(Some((rec.bus, prod))));
+        *lock(&self.recording) = Some(rec);
+        Ok(())
+    }
+
+    /// Stop the recording, if any. Returns where it was saved and how long it ran.
+    pub fn stop_recording(&self) -> Option<(std::path::PathBuf, f64)> {
+        let rec = lock(&self.recording).take()?;
+        let _ = self.io_tx.send(IoCmd::Record(None));
+        let path = rec.path.clone();
+        rec.finish().ok().map(|secs| (path, secs))
+    }
+
+    /// The bus being recorded, where, and for how many seconds so far.
+    pub fn recording(&self) -> Option<(usize, std::path::PathBuf, f64)> {
+        lock(&self.recording)
+            .as_ref()
+            .map(|r| (r.bus, r.path.clone(), r.seconds()))
     }
 
     pub fn set_test_click(&self, on: bool) {
@@ -287,12 +317,14 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
     let mut next = Instant::now();
     let mut cpu = 0.0f32;
     let mut blocks = 0u64;
+    let mut recording: Option<(usize, HeapProd<f32>)> = None;
 
     while !shutdown.load(Ordering::Relaxed) {
         while let Ok(msg) = rx.try_recv() {
             match msg {
                 MixMsg::Feed(i, f) => feeds[i] = f,
                 MixMsg::Sink(b, s) => sinks[b] = s,
+                MixMsg::Record(r) => recording = r,
             }
         }
         if !shared.running.load(Ordering::Relaxed) {
@@ -332,6 +364,9 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
                     frame[1] += v;
                 }
             }
+        }
+        if let Some((bus, prod)) = &mut recording {
+            write_frames(prod, &outs[*bus]);
         }
         blocks = blocks.wrapping_add(1);
         for b in 0..BUSES {
@@ -428,6 +463,9 @@ fn io_thread(
                     // Targets are fixed when a stream opens, so reopen everything.
                     st.close_all();
                 }
+            }
+            Ok(IoCmd::Record(r)) => {
+                let _ = st.mix_tx.send(MixMsg::Record(r));
             }
             Ok(IoCmd::Refresh) => last_refresh = Instant::now() - DEVICE_REFRESH,
             Err(RecvTimeoutError::Timeout) => {}
@@ -725,6 +763,30 @@ mod tests {
             engine.status().inputs[0],
             SlotStatus::Running { .. }
         ));
+    }
+
+    #[test]
+    fn a_bus_can_be_recorded_to_a_wav_file() {
+        let p = EngineParams::default();
+        let (engine, _) = start(&[(0, MIC)], &[(0, SPEAKERS)], p);
+        thread::sleep(Duration::from_millis(500));
+        let path = std::env::temp_dir().join(format!("wavemix-rec-{}.wav", std::process::id()));
+        engine.start_recording(0, path.clone()).unwrap();
+        assert!(engine.recording().is_some());
+        thread::sleep(Duration::from_millis(800));
+        let (saved, secs) = engine.stop_recording().expect("a recording was running");
+        assert!(engine.recording().is_none());
+        assert_eq!(saved, path);
+        let size = std::fs::metadata(&path).unwrap().len();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!((0.5..1.2).contains(&secs), "recorded {secs} s");
+        assert_eq!(size as usize, 44 + (secs * 48_000.0).round() as usize * 6);
+        // The simulated microphone is a tone, so the file isn't silence.
+        let loud = bytes[44..]
+            .chunks_exact(3)
+            .any(|s| s[2] != 0 && s[2] != 0xff);
+        assert!(loud, "the recording is silent");
     }
 
     #[test]

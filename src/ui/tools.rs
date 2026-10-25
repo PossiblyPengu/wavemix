@@ -36,7 +36,7 @@ fn bus_eq_editor(ui: &mut Ui, p: &mut ParamEqParams, selected: &mut usize, accen
     ui.add_space(4.0);
 
     let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 200.0), Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 170.0), Sense::click_and_drag());
     let painter = ui.painter();
     painter.rect_filled(rect, 8.0, theme::METER_BG());
     for hz in [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0] {
@@ -265,6 +265,135 @@ impl MixerApp {
         });
         if params.duck != before {
             self.commit_params(params);
+        }
+    }
+}
+
+/// "2026-10-25 14-03-07", from the local clock.
+fn timestamp() -> String {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+        let t = unsafe {
+            let mut t = std::mem::zeroed();
+            GetLocalTime(&mut t);
+            t
+        };
+        format!(
+            "{:04}-{:02}-{:02} {:02}-{:02}-{:02}",
+            t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        format!("{secs}")
+    }
+}
+
+/// Where recordings go: Music\Wavemix, or the temp folder if there is no Music folder.
+fn recordings_dir() -> std::path::PathBuf {
+    std::env::var_os("USERPROFILE")
+        .map(|p| std::path::PathBuf::from(p).join("Music"))
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Wavemix")
+}
+
+fn clock(seconds: f64) -> String {
+    let s = seconds as u64;
+    format!("{:02}:{:02}", s / 60, s % 60)
+}
+
+impl MixerApp {
+    /// Start or stop recording. `bus` overrides the remembered choice of what to record.
+    pub(super) fn set_recording(&mut self, on: bool, bus: Option<usize>) {
+        if let Some(b) = bus {
+            self.config.record_bus = b.min(crate::engine::params::BUSES - 1);
+            self.config.save();
+        }
+        let bus = self.config.record_bus.min(crate::engine::params::BUSES - 1);
+        if !on {
+            if let Some((path, secs)) = self.engine.stop_recording() {
+                self.recording_note = Some(format!("Saved {} ({})", path.display(), clock(secs)));
+            }
+            return;
+        }
+        if self.engine.recording().is_some() {
+            return;
+        }
+        let path = recordings_dir().join(format!(
+            "Wavemix {} {}.wav",
+            self.config.bus_title(bus),
+            timestamp()
+        ));
+        self.recording_note = match self.engine.start_recording(bus, path) {
+            Ok(()) => None,
+            Err(e) => Some(format!("Couldn't start recording: {e}")),
+        };
+    }
+
+    /// Record button and the choice of what to record, in the engine bar.
+    pub(super) fn record_button(&mut self, ui: &mut Ui) {
+        let active = self.engine.recording();
+        let bus = self.config.record_bus.min(crate::engine::params::BUSES - 1);
+        let label = match &active {
+            Some((_, _, secs)) => format!("Stop  {}", clock(*secs)),
+            None => "Record".to_string(),
+        };
+        let red = theme::MUTE();
+        let resp = strip::toggle(ui, &label, active.is_some(), vec2(92.0, 30.0), red)
+            .on_hover_text(match &active {
+                Some((_, path, _)) => format!("Recording to {}\nClick to stop", path.display()),
+                None => "Record one output to a WAV file".to_string(),
+            });
+        if resp.clicked() {
+            self.set_recording(active.is_none(), None);
+        }
+        if active.is_some() {
+            // Keep the timer ticking.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(250));
+        }
+        // Which output to capture.
+        let pick = strip::chip(ui, &self.config.bus_title(bus), 62.0, false)
+            .on_hover_text("Which output to record");
+        egui::Popup::menu(&pick).show(|ui| {
+            ui.set_min_width(180.0);
+            strip::caption(ui, "RECORD THIS OUTPUT");
+            for b in 0..crate::engine::params::BUSES {
+                if ui
+                    .selectable_label(b == bus, self.config.bus_title(b))
+                    .clicked()
+                    && active.is_none()
+                {
+                    self.config.record_bus = b;
+                    self.config.save();
+                    ui.close();
+                }
+            }
+            if active.is_some() {
+                ui.label(
+                    RichText::new("Stop the recording to change it.")
+                        .size(11.0)
+                        .color(theme::TEXT_DIM()),
+                );
+            }
+            ui.separator();
+            if ui.button("Open the recordings folder").clicked() {
+                let dir = recordings_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                }
+                ui.close();
+            }
+        });
+        if let Some(note) = &self.recording_note {
+            strip::stat_chip(ui, note, theme::NOTE_TEXT());
         }
     }
 }

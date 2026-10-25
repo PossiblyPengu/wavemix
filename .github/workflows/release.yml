@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release, matching Cargo.toml (for example 0.13.0)'
+        description: 'Version to release, matching Cargo.toml (for example 0.15.0)'
         required: true
 
 permissions:
@@ -16,6 +16,10 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # Optional code-signing certificate: a base64 .pfx and its password, as repository secrets.
+      # Without them the build still works, just unsigned.
+      SIGN_PFX: ${{ secrets.SIGN_PFX_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -28,13 +32,41 @@ jobs:
           if ((Select-String -Path Cargo.toml -Pattern "^version = `"$v`"" -Quiet) -ne $true) { throw "Cargo.toml is not at version $v" }
           "version=$v" >> $env:GITHUB_OUTPUT
       - run: cargo build --release
+      - name: Find signtool
+        if: env.SIGN_PFX != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX))
+          $tool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -First 1
+          "SIGNTOOL=$($tool.FullName)" >> $env:GITHUB_ENV
+          "PFX=$pfx" >> $env:GITHUB_ENV
+      - name: Sign the program
+        if: env.SIGN_PFX != ''
+        shell: pwsh
+        env:
+          SIGN_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          & $env:SIGNTOOL sign /f $env:PFX /p $env:SIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 target\release\wavemix.exe
       - name: Build the installer
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
           $version = "${{ steps.v.outputs.version }}"
           & "C:\Program Files (x86)\NSIS\makensis.exe" "/DVERSION=$version" "/DEXE=$PWD\target\release\wavemix.exe" "/DOUT=$PWD\wavemix-setup-$version.exe" installer\wavemix.nsi
-          # A checksum beside the installer, which the app checks before running a download.
+      - name: Sign the installer
+        if: env.SIGN_PFX != ''
+        shell: pwsh
+        env:
+          SIGN_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          & $env:SIGNTOOL sign /f $env:PFX /p $env:SIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 (Get-ChildItem wavemix-setup-*.exe).FullName
+      - name: Checksum
+        shell: pwsh
+        run: |
+          # Beside the installer, so the app can check what it downloaded before running it.
+          $version = "${{ steps.v.outputs.version }}"
           $hash = (Get-FileHash -Algorithm SHA256 "wavemix-setup-$version.exe").Hash.ToLower()
           "$hash  wavemix-setup-$version.exe" | Out-File -Encoding ascii "wavemix-setup-$version.exe.sha256"
       - uses: softprops/action-gh-release@v2

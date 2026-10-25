@@ -24,7 +24,8 @@ pub enum EditorTab {
 }
 
 /// Latency presets, in milliseconds per device link.
-const LATENCY_CHOICES: [(&str, u32); 4] = [
+const LATENCY_CHOICES: [(&str, u32); 5] = [
+    ("Ultra (10 ms)", 10),
     ("Low (20 ms)", 20),
     ("Normal (30 ms)", 30),
     ("Safe (60 ms)", 60),
@@ -47,6 +48,7 @@ pub(super) fn bus_colors() -> [Color32; BUSES] {
 const STRIP_CHROME_H: f32 = 262.0;
 const PANEL_CHROME_H: f32 = 64.0;
 const MIN_FADER_H: f32 = 150.0;
+const MIN_FADER_H_EDITING: f32 = 90.0;
 const MAX_FADER_H: f32 = 460.0;
 /// Room the processing editor needs underneath when it's open.
 const EDITOR_H: f32 = 300.0;
@@ -157,13 +159,16 @@ impl MixerApp {
 
         // Use the whole window: the faders take the height left over once the controls and (if
         // open) the editor have what they need.
-        let editor = if self.editing.is_some() {
-            EDITOR_H
+        let editing = self.editing.is_some() || self.bus_editing.is_some();
+        let editor = if editing { EDITOR_H } else { 0.0 };
+        // With an editor open the faders give way, so the editor fits without scrolling.
+        let min_fader = if editing {
+            MIN_FADER_H_EDITING
         } else {
-            0.0
+            MIN_FADER_H
         };
         let fader_h = (ui.available_height() - STRIP_CHROME_H - PANEL_CHROME_H - editor)
-            .clamp(MIN_FADER_H, MAX_FADER_H);
+            .clamp(min_fader, MAX_FADER_H);
         let panel_h = STRIP_CHROME_H + fader_h;
 
         // Measured out here: inside a scroll area the width is whatever the content asks for.
@@ -310,6 +315,7 @@ impl MixerApp {
                     }
                     if running {
                         self.duck_button(ui);
+                        self.record_button(ui);
                     }
                     if running {
                         let mut p = self.engine.params();
@@ -1326,7 +1332,7 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
     ui.add_space(4.0);
 
     let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 190.0), Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 170.0), Sense::click_and_drag());
     let painter = ui.painter();
     painter.rect_filled(rect, 8.0, theme::METER_BG());
     for hz in [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0] {

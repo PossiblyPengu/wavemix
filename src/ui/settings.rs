@@ -359,6 +359,63 @@ impl MixerApp {
         section(ui, "Setup check");
         self.setup_check(ui);
 
+        section(ui, "Remote control");
+        hint(
+            ui,
+            "Lets other programs on this PC (a Stream Deck, a script) read and change Wavemix over \
+             a local web address. Off by default; it only listens on this computer and every \
+             request needs the secret below.",
+        );
+        let mut on = self.config.remote.enabled;
+        if ui
+            .checkbox(&mut on, "Allow remote control on this PC")
+            .changed()
+        {
+            self.config.remote.enabled = on;
+            if on && self.config.remote.token.is_empty() {
+                self.config.remote.token = crate::remote::new_token();
+            }
+            self.config.save();
+        }
+        if self.config.remote.enabled {
+            let mut port = self.config.remote.port;
+            ui.horizontal(|ui| {
+                ui.label("Port");
+                if ui
+                    .add(egui::DragValue::new(&mut port).range(1024..=65535))
+                    .changed()
+                {
+                    self.config.remote.port = port;
+                    self.config.save();
+                }
+            });
+            let example = format!(
+                "http://127.0.0.1:{}/api/state?token={}",
+                self.config.remote.port, self.config.remote.token
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Copy example address").clicked() {
+                    ui.ctx().copy_text(example.clone());
+                }
+                if ui.button("New secret").clicked() {
+                    self.config.remote.token = crate::remote::new_token();
+                    self.config.save();
+                }
+            });
+            match (&self.remote, &self.remote_error) {
+                (Some(_), _) => hint(ui, "Listening. Try the example address in a browser."),
+                (None, Some(e)) => hint(ui, e),
+                _ => {}
+            }
+            hint(
+                ui,
+                "Addresses: /api/state, /api/strip/0?gain_db=-6&mute=toggle, /api/bus/0?gain_db=0, \
+                 /api/engine?on=1, /api/duck?on=toggle, /api/bypass?on=1, /api/preset?name=..., \
+                 /api/record?on=toggle, /api/key?action=volume_up. Add &token=... or send \
+                 Authorization: Bearer ...",
+            );
+        }
+
         section(ui, "Help");
         hint(
             ui,

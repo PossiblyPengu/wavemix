@@ -14,6 +14,7 @@ mod instance;
 mod model;
 mod osd;
 mod preset;
+mod remote;
 #[cfg(windows)]
 mod startup;
 #[cfg(windows)]

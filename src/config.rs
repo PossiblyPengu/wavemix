@@ -45,6 +45,25 @@ pub enum OsdPosition {
 }
 
 /// Global hotkeys, as strings like `ctrl+alt+up`. Empty means unbound.
+/// The local control interface (see `remote.rs`). Off unless switched on.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RemoteConfig {
+    pub enabled: bool,
+    pub port: u16,
+    pub token: String,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 8765,
+            token: String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Hotkeys {
@@ -186,6 +205,9 @@ pub struct Config {
     pub theme: ThemeMode,
     /// Look for new releases now and then.
     pub check_updates: bool,
+    pub remote: RemoteConfig,
+    /// Which output bus the Record button captures.
+    pub record_bus: usize,
     /// List idle background programs and services too, not only apps that are open or playing.
     pub show_background_apps: bool,
     /// Interface zoom: 1.0 is normal.
@@ -229,6 +251,8 @@ impl Default for Config {
             hide_windows_osd: true,
             theme: ThemeMode::System,
             check_updates: true,
+            remote: RemoteConfig::default(),
+            record_bus: 0,
             show_background_apps: false,
             ui_scale: 1.0,
             skipped_update: String::new(),

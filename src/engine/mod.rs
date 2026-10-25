@@ -8,5 +8,6 @@ pub mod io;
 pub mod mixer;
 pub mod params;
 pub mod rate;
+pub mod record;
 pub mod runtime;
 pub mod sim;

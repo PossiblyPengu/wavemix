@@ -15,6 +15,7 @@ use crate::model::{group_apps, AppStrip, Command, Flow, IconData, Snapshot};
 mod compact;
 mod console;
 mod diagnostics;
+mod remote_ui;
 mod settings;
 #[cfg(windows)]
 mod shell;
@@ -57,6 +58,12 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// The local control interface, when it is switched on, and why it couldn't start.
+    remote: Option<crate::remote::Remote>,
+    remote_error: Option<String>,
+    remote_failed_at: Option<std::time::Instant>,
+    /// The last thing the recorder wants to say (where it saved, or why it couldn't start).
+    recording_note: Option<String>,
     /// Output bus whose equaliser editor is open, and the band selected in it.
     bus_editing: Option<usize>,
     eq_band: usize,
@@ -175,6 +182,10 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            remote: None,
+            remote_error: None,
+            remote_failed_at: None,
+            recording_note: None,
             // `--editor buseq` opens output A1's equaliser on launch.
             bus_editing: std::env::args()
                 .skip_while(|a| a != "--editor")
@@ -661,6 +672,7 @@ impl eframe::App for MixerApp {
         self.follow_theme(ctx);
         self.drive_updates(ctx);
         self.drive_preset_triggers();
+        self.drive_remote(ctx);
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]
