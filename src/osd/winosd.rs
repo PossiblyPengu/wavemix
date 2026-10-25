@@ -20,9 +20,9 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId,
-    GetSystemMetrics, IsWindowVisible, ShowWindow, GWL_EXSTYLE, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
-    WS_EX_TOPMOST,
+    EnumWindows, GetClassNameW, GetSystemMetrics, GetWindowLongW, GetWindowRect,
+    GetWindowThreadProcessId, IsWindowVisible, ShowWindow, GWL_EXSTYLE, SM_CXSCREEN, SM_CYSCREEN,
+    SW_HIDE, WS_EX_TOPMOST,
 };
 
 /// Window classes the Windows 10 and 11 volume popups are drawn in.
@@ -88,7 +88,8 @@ impl Sweep {
             }
             let mut pid = 0u32;
             GetWindowThreadProcessId(hwnd, &mut pid);
-            if pid == GetCurrentProcessId() || !process_name(pid).eq_ignore_ascii_case("explorer.exe")
+            if pid == GetCurrentProcessId()
+                || !process_name(pid).eq_ignore_ascii_case("explorer.exe")
             {
                 return 1;
             }
@@ -142,7 +143,11 @@ fn log(line: &str) {
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > 20_000) {
         let _ = std::fs::remove_file(&path);
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(f, "{line}");
     }
 }

@@ -290,15 +290,17 @@ mod tests {
 
     #[test]
     fn an_app_with_sessions_on_several_devices_is_one_strip_on_the_device_it_plays() {
-        let on = |id: &str, dev: &str, active: bool| {
-            sess(id, dev, "steam", 1.0, false, active)
-        };
-        let list = [on("a", "d1", false), on("b", "d2", true), on("c", "d3", false)];
+        let on = |id: &str, dev: &str, active: bool| sess(id, dev, "steam", 1.0, false, active);
+        let list = [
+            on("a", "d1", false),
+            on("b", "d2", true),
+            on("c", "d3", false),
+        ];
         let apps = group_apps(&list, Some("d1"));
         assert_eq!(apps.len(), 1);
         assert_eq!(apps[0].device_id, "d2"); // the one that is playing
         assert_eq!(apps[0].sessions.len(), 3); // but a slider change reaches all of them
-        // Nothing playing: fall back to the default device.
+                                               // Nothing playing: fall back to the default device.
         let quiet = [on("a", "d2", false), on("b", "d1", false)];
         assert_eq!(group_apps(&quiet, Some("d1"))[0].device_id, "d1");
     }

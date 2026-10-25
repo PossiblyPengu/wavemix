@@ -65,7 +65,7 @@ struct FlyoutGeom {
 pub struct ShellState {
     tray: Option<Tray>,
     visible: bool,
-    quitting: bool,
+    pub(super) quitting: bool,
     shown_at: Instant,
     hidden_at: Option<Instant>,
     focused_once: bool,

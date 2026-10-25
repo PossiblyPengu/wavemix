@@ -1,4 +1,4 @@
-# wavemix
+# Wavemix
 
 A per-app and per-device audio mixer for Windows: a Voicemeeter-style console of fader strips with
 live meters, and an EarTrumpet-style compact list. It controls Windows' own audio (Core Audio /
@@ -59,7 +59,7 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
   `ctrl+alt+m`; rebind in Settings).
 - **On-screen volume bar**, the one from voicemeeter-osd. It pops out of the tray icon with a
   callout tail pointing back at it, whenever any playback device's volume or mute changes (a
-  hotkey, a keyboard knob, another app). Hover keeps it up, click opens wavemix, scroll changes the
+  hotkey, a keyboard knob, another app). Hover keeps it up, click opens Wavemix, scroll changes the
   volume, middle-click mutes, and dragging parks it anywhere. Horizontal or vertical, optional
   Windows accent colour, adjustable opacity and timeout, and it stays out of fullscreen games.
 - Tray icon: click for Simple mode, right-click for Open / Simple / Pro / Quit. Closing the Pro
@@ -75,18 +75,18 @@ bands, bus EQ, ASIO/WDM-exclusive devices for lower latency, and recording.
 
 ## Switching from Voicemeeter
 
-If Voicemeeter is installed, wavemix offers to bring your setup over (also in Settings > Switching
+If Voicemeeter is installed, Wavemix offers to bring your setup over (also in Settings > Switching
 from Voicemeeter). With Voicemeeter running, it reads your strips and buses through Voicemeeter's
 own Remote API and translates them: gain, mute, solo, mono, balance, A/B routing, bass/mid/treble,
 compressor and gate (approximated from Voicemeeter's knobs), and the hardware devices you picked.
 Standard, Banana and Potato are all understood. Bus EQ, delays and macros are not imported, and
-anything that doesn't fit wavemix's 3 + 2 inputs and A1-A3 / B1-B2 buses is listed rather than
+anything that doesn't fit Wavemix's 3 + 2 inputs and A1-A3 / B1-B2 buses is listed rather than
 dropped silently.
 
 It then moves Windows over so nothing goes quiet: if the default playback or recording device is
 one of Voicemeeter's virtual ones, it is changed to your real speakers / a virtual cable / your
 microphone *before* Voicemeeter is closed. Optionally it also stops Voicemeeter starting with
-Windows and starts wavemix instead. Every step is a checkbox.
+Windows and starts Wavemix instead. Every step is a checkbox.
 
 One thing can't be translated: Voicemeeter's own virtual inputs (VAIO) can't be captured by other
 programs, so apps you sent into them need a virtual cable (VB-Cable) instead.
@@ -103,7 +103,7 @@ while audio is playing: it writes the highest level seen on every device and app
 ## Install
 
 Run `wavemix-setup-<version>.exe`. It installs just for you (no administrator rights) into
-`%LOCALAPPDATA%\Programs\wavemix`, adds a Start Menu shortcut, and optionally starts wavemix with
+`%LOCALAPPDATA%\Programs\wavemix`, adds a Start Menu shortcut, and optionally starts Wavemix with
 Windows and adds a desktop shortcut. Uninstall from Settings > Apps; it asks whether to keep your
 settings and presets. Upgrading is just running a newer installer over the old one. Windows
 SmartScreen may warn that the installer isn't signed; choose "More info" then "Run anyway".

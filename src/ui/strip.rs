@@ -233,9 +233,16 @@ mod tests {
 
     #[test]
     fn clashing_short_names_keep_their_driver() {
-        let all = ["Speakers (Logi Z407)", "Speakers (Razer USB Sound Card)", "Headphones (USB)"];
+        let all = [
+            "Speakers (Logi Z407)",
+            "Speakers (Razer USB Sound Card)",
+            "Headphones (USB)",
+        ];
         assert_eq!(super::label_among(all[0], all), "Speakers · Logi Z407");
-        assert_eq!(super::label_among(all[1], all), "Speakers · Razer USB Sound Card");
+        assert_eq!(
+            super::label_among(all[1], all),
+            "Speakers · Razer USB Sound Card"
+        );
         assert_eq!(super::label_among(all[2], all), "Headphones");
     }
 
@@ -296,7 +303,11 @@ pub fn db_fader(
                 egui::Align2::RIGHT_CENTER,
                 format!("{db:+.0}").replace("+0", "0"),
                 FontId::proportional(9.0),
-                if unity { theme::TEXT() } else { theme::TEXT_DIM() },
+                if unity {
+                    theme::TEXT()
+                } else {
+                    theme::TEXT_DIM()
+                },
             );
             painter.line_segment(
                 [pos2(rect.left() + 23.0, y), pos2(rect.left() + 29.0, y)],
@@ -424,7 +435,11 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
     let fill = mix(rest, color, lit);
     let fg = mix(theme::TEXT_DIM(), theme::ON_ACCENT(), lit);
     // A press squeezes the pill in slightly.
-    let body = rect.shrink(if resp.is_pointer_button_down_on() { 1.0 } else { 0.0 });
+    let body = rect.shrink(if resp.is_pointer_button_down_on() {
+        1.0
+    } else {
+        0.0
+    });
     ui.painter().rect_filled(body, theme::pill(size.y), fill);
     ui.painter().text(
         rect.center(),
@@ -451,7 +466,11 @@ pub fn process_button(ui: &mut Ui, text: &str, on: bool, open: bool, size: egui:
         theme::ON_ACCENT(),
         opened,
     );
-    let body = rect.shrink(if resp.is_pointer_button_down_on() { 1.0 } else { 0.0 });
+    let body = rect.shrink(if resp.is_pointer_button_down_on() {
+        1.0
+    } else {
+        0.0
+    });
     ui.painter().rect_filled(body, theme::pill(size.y), fill);
     ui.painter().text(
         rect.center(),
@@ -472,10 +491,18 @@ pub fn stat_chip(ui: &mut Ui, text: &str, color: Color32) -> Response {
         .size()
         .x;
     let (rect, resp) = ui.allocate_exact_size(vec2(w + 22.0, 24.0), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, theme::pill(24.0), theme::PANEL_HI().linear_multiply(0.7));
-    ui.painter()
-        .text(rect.center(), egui::Align2::CENTER_CENTER, text, font, color);
+    ui.painter().rect_filled(
+        rect,
+        theme::pill(24.0),
+        theme::PANEL_HI().linear_multiply(0.7),
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        font,
+        color,
+    );
     resp
 }
 
@@ -490,7 +517,11 @@ pub fn ghost_button(ui: &mut Ui, text: &str, active: bool) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(w + 26.0, 30.0), Sense::click());
     let hover = anim(ui, resp.id.with("h"), resp.hovered(), 0.12);
     let on = anim(ui, resp.id.with("on"), active, 0.16);
-    let wash = mix(theme::PANEL_HI().linear_multiply(0.0), theme::PANEL_HI(), hover);
+    let wash = mix(
+        theme::PANEL_HI().linear_multiply(0.0),
+        theme::PANEL_HI(),
+        hover,
+    );
     let fill = mix(wash, theme::ACTIVE(), on);
     ui.painter().rect_filled(rect, theme::pill(30.0), fill);
     ui.painter().text(
@@ -510,7 +541,8 @@ pub fn segmented(ui: &mut Ui, id: Id, labels: &[(&str, &str)], selected: usize) 
     const H: f32 = 34.0;
     let n = labels.len();
     let (rect, _) = ui.allocate_exact_size(vec2(SEG_W * n as f32 + 8.0, H), Sense::hover());
-    ui.painter().rect_filled(rect, theme::pill(H), theme::PANEL());
+    ui.painter()
+        .rect_filled(rect, theme::pill(H), theme::PANEL());
     // The amber thumb glides to the chosen segment.
     let at = ui
         .ctx()
@@ -521,14 +553,17 @@ pub fn segmented(ui: &mut Ui, id: Id, labels: &[(&str, &str)], selected: usize) 
         rect.min + vec2(4.0 + frac * SEG_W, 4.0),
         vec2(SEG_W, H - 8.0),
     );
-    ui.painter().rect_filled(thumb, theme::pill(H - 8.0), theme::ACCENT());
+    ui.painter()
+        .rect_filled(thumb, theme::pill(H - 8.0), theme::ACCENT());
     let mut clicked = None;
     for (i, (label, tip)) in labels.iter().enumerate() {
         let seg = Rect::from_min_size(
             rect.min + vec2(4.0 + i as f32 * SEG_W, 4.0),
             vec2(SEG_W, H - 8.0),
         );
-        let resp = ui.interact(seg, id.with(i), Sense::click()).on_hover_text(*tip);
+        let resp = ui
+            .interact(seg, id.with(i), Sense::click())
+            .on_hover_text(*tip);
         // How much of this segment the thumb covers decides its text colour.
         let cover = ease((1.0 - (frac - i as f32).abs()).clamp(0.0, 1.0));
         let hover = anim(ui, id.with(("h", i)), resp.hovered(), 0.12);

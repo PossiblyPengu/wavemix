@@ -5,10 +5,10 @@
 mod display;
 #[cfg(windows)]
 mod gfx;
-#[cfg(windows)]
-mod winosd;
 pub mod layout;
 pub mod wheel;
+#[cfg(windows)]
+mod winosd;
 
 #[cfg(windows)]
 pub use display::{MonitorInfo, Osd, OsdEvent, OsdSettings};

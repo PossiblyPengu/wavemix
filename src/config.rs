@@ -118,6 +118,10 @@ pub struct Config {
     /// Hide Windows' own volume popup whenever the wavemix bar is shown.
     pub hide_windows_osd: bool,
     pub theme: ThemeMode,
+    /// Look for new releases now and then.
+    pub check_updates: bool,
+    /// A version the user said "Later" to, so its banner stays away.
+    pub skipped_update: String,
     /// Names you gave devices, keyed by Windows' stable device id (so twins and driver renames
     /// don't mix them up).
     pub device_names: BTreeMap<String, String>,
@@ -154,6 +158,8 @@ impl Default for Config {
             osd_accent_system: true,
             hide_windows_osd: true,
             theme: ThemeMode::System,
+            check_updates: true,
+            skipped_update: String::new(),
             device_names: BTreeMap::new(),
             strip_names: Vec::new(),
             bus_names: Vec::new(),
@@ -271,7 +277,8 @@ mod name_tests {
         assert_eq!(c.strip_title(1), "Input 2");
         assert_eq!(c.bus_title(0), "Desk");
         assert_eq!(c.bus_title(1), "A2");
-        c.device_names.insert("{0.0.0}.{abc}".into(), "Desk speakers".into());
+        c.device_names
+            .insert("{0.0.0}.{abc}".into(), "Desk speakers".into());
         assert_eq!(c.device_alias("{0.0.0}.{abc}"), Some("Desk speakers"));
         assert_eq!(c.device_alias("Other"), None);
     }

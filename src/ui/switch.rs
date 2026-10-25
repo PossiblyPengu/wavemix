@@ -60,7 +60,10 @@ impl MixerApp {
     pub(super) fn switch_banner(&mut self, ui: &mut Ui) {
         egui::Frame::new()
             .fill(theme::TINT_NOTE())
-            .stroke(egui::Stroke::new(1.0, theme::ACCENT().linear_multiply(0.45)))
+            .stroke(egui::Stroke::new(
+                1.0,
+                theme::ACCENT().linear_multiply(0.45),
+            ))
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(16, 12))
             .show(ui, |ui| {
@@ -90,7 +93,7 @@ impl MixerApp {
                 let text = |ui: &mut Ui| {
                     ui.label(RichText::new("Using Voicemeeter?").strong());
                     ui.label(
-                        RichText::new("Bring your setup over to wavemix in one click.")
+                        RichText::new("Bring your setup over to Wavemix in one click.")
                             .size(12.0)
                             .color(theme::TEXT_DIM()),
                     );
@@ -206,7 +209,7 @@ impl MixerApp {
             &mut o.stop_voicemeeter_startup,
             "Stop Voicemeeter starting with Windows",
         );
-        ui.checkbox(&mut o.start_with_windows, "Start wavemix with Windows");
+        ui.checkbox(&mut o.start_with_windows, "Start Wavemix with Windows");
         ui.add_space(6.0);
         ui.label(
             RichText::new(
@@ -336,10 +339,10 @@ impl MixerApp {
                 match crate::startup::set_enabled(true) {
                     Ok(()) => {
                         self.config.run_at_startup = true;
-                        report.push("wavemix will start with Windows.".into());
+                        report.push("Wavemix will start with Windows.".into());
                     }
                     Err(e) => {
-                        report.push(format!("Couldn't set wavemix to start with Windows: {e}"))
+                        report.push(format!("Couldn't set Wavemix to start with Windows: {e}"))
                     }
                 }
             }

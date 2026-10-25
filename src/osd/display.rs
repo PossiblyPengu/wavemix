@@ -1034,14 +1034,7 @@ unsafe fn draw_vertical(
     pct: f32,
 ) {
     let cx = pad + card_w / 2.0;
-    draw_speaker(
-        canvas,
-        cx,
-        pad + s(24.0),
-        s(20.0),
-        frame.muted,
-        ink(235),
-    );
+    draw_speaker(canvas, cx, pad + s(24.0), s(20.0), frame.muted, ink(235));
 
     let track_w = s(10.0);
     // Centre the track+meter pair as a group, not the track alone.
@@ -1049,26 +1042,12 @@ unsafe fn draw_vertical(
     let track_top = pad + s(58.0);
     let track_bottom = pad + card_h - s(42.0);
     let track_h = track_bottom - track_top;
-    canvas.fill_round_rect(
-        track_x,
-        track_top,
-        track_w,
-        track_h,
-        track_w / 2.0,
-        ink(38),
-    );
+    canvas.fill_round_rect(track_x, track_top, track_w, track_h, track_w / 2.0, ink(38));
 
     // Live signal meter alongside the fader, so you can see level as well as the setting.
     let meter_w = s(4.0);
     let meter_x = track_x + track_w + s(7.0);
-    canvas.fill_round_rect(
-        meter_x,
-        track_top,
-        meter_w,
-        track_h,
-        meter_w / 2.0,
-        ink(30),
-    );
+    canvas.fill_round_rect(meter_x, track_top, meter_w, track_h, meter_w / 2.0, ink(30));
     let meter_h = track_h * frame.meter.clamp(0.0, 1.0);
     if meter_h > 0.5 {
         canvas.fill_round_rect(

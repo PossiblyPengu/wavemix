@@ -119,7 +119,12 @@ impl MixerApp {
                         .map(|(i, (a, h))| (i, a.clone(), *h))
                         .collect();
                     for (index, app, height) in gone {
-                        self.list_anim.ghosts.push(Ghost { app, index, height, since: now });
+                        self.list_anim.ghosts.push(Ghost {
+                            app,
+                            index,
+                            height,
+                            since: now,
+                        });
                     }
                     for a in &playing {
                         self.list_anim.born.entry(a.key.clone()).or_insert(now);
@@ -132,7 +137,9 @@ impl MixerApp {
                     }
                     self.list_anim.primed = true;
                 }
-                self.list_anim.born.retain(|k, _| keys.contains(&k.as_str()));
+                self.list_anim
+                    .born
+                    .retain(|k, _| keys.contains(&k.as_str()));
                 self.list_anim
                     .ghosts
                     .retain(|g| g.since.elapsed().as_secs_f32() < ROW_OUT_S);
@@ -140,7 +147,14 @@ impl MixerApp {
                     .list_anim
                     .ghosts
                     .iter()
-                    .map(|g| (g.index, g.app.clone(), g.height, g.since.elapsed().as_secs_f32() / ROW_OUT_S))
+                    .map(|g| {
+                        (
+                            g.index,
+                            g.app.clone(),
+                            g.height,
+                            g.since.elapsed().as_secs_f32() / ROW_OUT_S,
+                        )
+                    })
                     .collect();
 
                 let mut drawn: Vec<(AppStrip, f32)> = Vec::new();
@@ -231,14 +245,13 @@ impl MixerApp {
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let width = ui.available_width().min(240.0);
-                        let resp =
-                            strip::chip(
-                                ui,
-                                &self.device_label(&dev.name, outputs.iter().map(|d| d.name.as_str())),
-                                width,
-                                false,
-                            )
-                                .on_hover_text("Choose which output to control");
+                        let resp = strip::chip(
+                            ui,
+                            &self.device_label(&dev.name, outputs.iter().map(|d| d.name.as_str())),
+                            width,
+                            false,
+                        )
+                        .on_hover_text("Choose which output to control");
                         egui::Popup::menu(&resp).show(|ui| {
                             ui.set_min_width(220.0);
                             for d in outputs {
@@ -437,11 +450,7 @@ fn paint_h_slider(
     // The knob swells slightly while the pointer is over the slider.
     let swell = strip::anim(ui, id.with("swell"), ui.rect_contains_pointer(rect), 0.14);
     let r = 9.0 + swell * 1.5;
-    p.circle_filled(
-        pos2(knob.x, knob.y + 1.5),
-        r + 0.5,
-        theme::shadow_color(55),
-    );
+    p.circle_filled(pos2(knob.x, knob.y + 1.5), r + 0.5, theme::shadow_color(55));
     p.circle_filled(knob, r, theme::CARD());
     p.circle_stroke(knob, r, egui::Stroke::new(2.0, color));
 }

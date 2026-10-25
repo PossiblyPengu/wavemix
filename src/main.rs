@@ -13,6 +13,7 @@ mod startup;
 #[cfg(windows)]
 mod tray;
 mod ui;
+mod update;
 mod voicemeeter;
 
 use config::Config;
@@ -118,7 +119,7 @@ fn main() -> eframe::Result {
     let [w, h] = MixerApp::size_for(&config);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("wavemix")
+            .with_title("Wavemix")
             .with_visible(!start_hidden)
             .with_inner_size([w, h])
             .with_min_inner_size([340.0, 420.0]),

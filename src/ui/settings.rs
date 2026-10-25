@@ -3,9 +3,9 @@
 use eframe::egui::{self, RichText, Ui};
 
 use super::{strip, theme, MixerApp};
-use crate::config::ThemeMode;
 #[cfg(windows)]
 use crate::config::OsdPosition;
+use crate::config::ThemeMode;
 use crate::model::Snapshot;
 use crate::preset;
 
@@ -121,9 +121,13 @@ impl MixerApp {
                 self.theme_dirty = true;
             }
         });
+        self.update_settings(ui);
         let mut auto = self.config.auto_route;
         if ui
-            .checkbox(&mut auto, "Route Windows audio through the mixer when the engine is on")
+            .checkbox(
+                &mut auto,
+                "Route Windows audio through the mixer when the engine is on",
+            )
             .changed()
         {
             self.config.auto_route = auto;
@@ -278,7 +282,12 @@ impl MixerApp {
                 .collect();
             let mut changed = false;
             for (id, name) in all {
-                let mut text = self.config.device_names.get(&id).cloned().unwrap_or_default();
+                let mut text = self
+                    .config
+                    .device_names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default();
                 ui.vertical(|ui| {
                     let hint_text = strip::short_device_name(&name).to_string();
                     let edit = ui.add(

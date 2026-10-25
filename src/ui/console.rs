@@ -146,18 +146,25 @@ impl MixerApp {
                     ui.spacing_mut().item_spacing.x = PANEL_GAP;
                     // Two panels of exactly equal width; the strips sit centred in each.
                     let panel_w = ((avail_w - PANEL_GAP) / 2.0).floor();
-                    panel(ui, "INPUTS", "hardware and virtual", panel_w, panel_h, |ui| {
-                        for i in 0..STRIPS {
-                            self.input_strip(
-                                ui,
-                                i,
-                                fader_h,
-                                &mut params.strips[i],
-                                &devices,
-                                &status,
-                            );
-                        }
-                    });
+                    panel(
+                        ui,
+                        "INPUTS",
+                        "hardware and virtual",
+                        panel_w,
+                        panel_h,
+                        |ui| {
+                            for i in 0..STRIPS {
+                                self.input_strip(
+                                    ui,
+                                    i,
+                                    fader_h,
+                                    &mut params.strips[i],
+                                    &devices,
+                                    &status,
+                                );
+                            }
+                        },
+                    );
                     panel(
                         ui,
                         "OUTPUT BUSES",
@@ -334,14 +341,16 @@ impl MixerApp {
     fn route_state(&self) -> (bool, Option<crate::model::Device>) {
         let snap = self.backend.snapshot();
         // Before the mixer has been set up, guess the same cable it will choose.
-        let listening = self.config.engine.io.inputs[HARDWARE_STRIPS].clone().or_else(|| {
-            self.engine
-                .devices()
-                .inputs
-                .iter()
-                .find(|d| d.is_virtual && d.name.contains("CABLE Output"))
-                .map(|d| d.name.clone())
-        });
+        let listening = self.config.engine.io.inputs[HARDWARE_STRIPS]
+            .clone()
+            .or_else(|| {
+                self.engine
+                    .devices()
+                    .inputs
+                    .iter()
+                    .find(|d| d.is_virtual && d.name.contains("CABLE Output"))
+                    .map(|d| d.name.clone())
+            });
         let cable = listening.and_then(|input| {
             snap.devices
                 .iter()
@@ -366,11 +375,15 @@ impl MixerApp {
             }
             return;
         };
-        let label = if routed { "Windows audio: routed" } else { "Route Windows audio" };
-        let tip = if routed {
-            "Everything Windows plays goes through wavemix. Click to give Windows its normal speakers back."
+        let label = if routed {
+            "Windows audio: routed"
         } else {
-            "Windows is playing straight to your speakers, so the mixer can't see it. Click to send it through wavemix."
+            "Route Windows audio"
+        };
+        let tip = if routed {
+            "Everything Windows plays goes through Wavemix. Click to give Windows its normal speakers back."
+        } else {
+            "Windows is playing straight to your speakers, so the mixer can't see it. Click to send it through Wavemix."
         };
         if strip::toggle(ui, label, routed, vec2(150.0, 28.0), theme::ACCENT())
             .on_hover_text(tip)
@@ -403,7 +416,10 @@ impl MixerApp {
         }
         if cable.is_none() {
             if self.config.engine.io.inputs[HARDWARE_STRIPS].is_some()
-                || devices.inputs.iter().any(|d| d.name.contains("CABLE Output"))
+                || devices
+                    .inputs
+                    .iter()
+                    .any(|d| d.name.contains("CABLE Output"))
             {
                 egui::Frame::new()
                     .fill(theme::TINT_NOTE())
@@ -422,12 +438,21 @@ impl MixerApp {
         }
         let running = self.engine.is_running();
         let active: Vec<String> = if running && routed {
-            self.config.engine.io.outputs[..3].iter().flatten().cloned().collect()
+            self.config.engine.io.outputs[..3]
+                .iter()
+                .flatten()
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
         let mut next = active.clone();
-        ui.label(RichText::new("PLAY THROUGH").size(11.0).strong().color(theme::TEXT_DIM()));
+        ui.label(
+            RichText::new("PLAY THROUGH")
+                .size(11.0)
+                .strong()
+                .color(theme::TEXT_DIM()),
+        );
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             for d in &hardware {
@@ -464,7 +489,12 @@ impl MixerApp {
             self.engine.set_output(b, dev);
         }
         let mut params = self.engine.params();
-        for (b, send) in params.strips[HARDWARE_STRIPS].sends.iter_mut().take(3).enumerate() {
+        for (b, send) in params.strips[HARDWARE_STRIPS]
+            .sends
+            .iter_mut()
+            .take(3)
+            .enumerate()
+        {
             *send = b < next.len();
         }
         // A bus or strip left far down from earlier tinkering would make this look broken.
@@ -500,10 +530,11 @@ impl MixerApp {
             return;
         }
         let levels = self.engine.levels();
-        let strip = levels.strip(HARDWARE_STRIPS).into_iter().fold(0.0, f32::max);
-        let bus = (0..3)
-            .flat_map(|b| levels.bus(b))
+        let strip = levels
+            .strip(HARDWARE_STRIPS)
+            .into_iter()
             .fold(0.0, f32::max);
+        let bus = (0..3).flat_map(|b| levels.bus(b)).fold(0.0, f32::max);
         let msg = if strip < 1e-4 {
             "Sound isn't reaching the mixer. In Pro, check Virtual 1 is set to CABLE Output."
         } else if bus < 1e-4 {
@@ -833,15 +864,27 @@ impl MixerApp {
             // click away, under "Route" and "Tune".
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::MUTE())
-                    .on_hover_text("Mute")
-                    .clicked()
+                if strip::toggle(
+                    ui,
+                    "Mute",
+                    p.mute,
+                    vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0),
+                    theme::MUTE(),
+                )
+                .on_hover_text("Mute")
+                .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Solo", p.solo, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::METER_YELLOW())
-                    .on_hover_text("Solo: hear only soloed strips")
-                    .clicked()
+                if strip::toggle(
+                    ui,
+                    "Solo",
+                    p.solo,
+                    vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0),
+                    theme::METER_YELLOW(),
+                )
+                .on_hover_text("Solo: hear only soloed strips")
+                .clicked()
                 {
                     p.solo = !p.solo;
                 }
@@ -983,15 +1026,27 @@ impl MixerApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::MUTE())
-                    .on_hover_text("Mute this bus")
-                    .clicked()
+                if strip::toggle(
+                    ui,
+                    "Mute",
+                    p.mute,
+                    vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0),
+                    theme::MUTE(),
+                )
+                .on_hover_text("Mute this bus")
+                .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Limit", p.limiter, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::METER_GREEN())
-                    .on_hover_text("Limiter: stops the summed mix from clipping")
-                    .clicked()
+                if strip::toggle(
+                    ui,
+                    "Limit",
+                    p.limiter,
+                    vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0),
+                    theme::METER_GREEN(),
+                )
+                .on_hover_text("Limiter: stops the summed mix from clipping")
+                .clicked()
                 {
                     p.limiter = !p.limiter;
                 }
@@ -1030,7 +1085,11 @@ impl MixerApp {
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(self.config.strip_title(i)).size(13.0).strong());
+                    ui.label(
+                        RichText::new(self.config.strip_title(i))
+                            .size(13.0)
+                            .strong(),
+                    );
                     ui.add_space(8.0);
                     for (t, label) in [
                         (EditorTab::Eq, "Equalizer"),

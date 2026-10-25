@@ -1,6 +1,6 @@
 [package]
 name = "wavemix"
-version = "0.12.1"
+version = "0.13.0"
 edition = "2021"
 description = "A per-app and per-device audio mixer for Windows, with a Voicemeeter-style console and an EarTrumpet-style tray flyout."
 
@@ -35,6 +35,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_Graphics_Gdi",
     "Win32_Graphics_GdiPlus",
     "Win32_Media",
+    "Win32_Networking_WinHttp",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",

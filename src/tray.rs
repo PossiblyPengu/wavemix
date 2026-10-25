@@ -12,7 +12,7 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 pub enum TrayAction {
     /// Left-click on the icon.
     Toggle,
-    /// "Open wavemix" in the menu.
+    /// "Open Wavemix" in the menu.
     Open,
     SetView(View),
     Quit,
@@ -31,7 +31,7 @@ const QUIT_ID: &str = "wavemix-quit";
 impl Tray {
     pub fn new(ctx: &egui::Context) -> Option<Self> {
         let menu = Menu::new();
-        let open = MenuItem::with_id(OPEN_ID, "Open wavemix", true, None);
+        let open = MenuItem::with_id(OPEN_ID, "Open Wavemix", true, None);
         let simple = MenuItem::with_id(SIMPLE_ID, "Simple mode", true, None);
         let pro = MenuItem::with_id(PRO_ID, "Pro mode", true, None);
         let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
@@ -74,7 +74,7 @@ impl Tray {
 
         let icon = TrayIconBuilder::new()
             .with_icon(make_icon())
-            .with_tooltip("wavemix")
+            .with_tooltip("Wavemix")
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
             .build()

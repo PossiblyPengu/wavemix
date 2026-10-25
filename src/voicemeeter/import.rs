@@ -301,7 +301,7 @@ pub fn plan_import(
     }
     if dropped_strips > 0 {
         notes.push(format!(
-            "{dropped_strips} of your strips don't fit (wavemix has 3 hardware and 2 virtual inputs) and were left out."
+            "{dropped_strips} of your strips don't fit (Wavemix has 3 hardware and 2 virtual inputs) and were left out."
         ));
     }
     if state.strips.iter().any(|s| s.is_virtual) {
@@ -339,7 +339,7 @@ pub fn plan_import(
     }
     if dropped_buses > 0 {
         notes.push(format!(
-            "{dropped_buses} of your output buses don't fit (wavemix has A1-A3 and B1-B2) and were left out."
+            "{dropped_buses} of your output buses don't fit (Wavemix has A1-A3 and B1-B2) and were left out."
         ));
     }
     if state.buses.iter().any(|b| b.is_b) {
@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(
             p.default_recording.as_deref(),
             Some("CABLE Output (VB-Audio Virtual Cable)"),
-            "the cable carries wavemix's mix, like Voicemeeter's B1 did"
+            "the cable carries Wavemix's mix, like Voicemeeter's B1 did"
         );
     }
 

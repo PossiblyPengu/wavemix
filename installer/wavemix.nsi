@@ -26,16 +26,18 @@ Unicode true
 !endif
 
 !define APP "wavemix"
+; What people see; APP is the file, folder and registry name.
+!define NAME "Wavemix"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
-Name "${APP} ${VERSION}"
+Name "${NAME} ${VERSION}"
 OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\${APP}"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
-BrandingText "${APP} ${VERSION}"
+BrandingText "${NAME} ${VERSION}"
 
 ; What an existing install looks like, read before anything is shown.
 Var OldVersion
@@ -43,10 +45,10 @@ Var OldUninstaller
 Var OldDir
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "Install ${APP}"
-!define MUI_WELCOMEPAGE_TEXT "wavemix is a volume control and audio mixer for Windows.$\r$\n$\r$\nSimple mode rises out of the taskbar when you click its tray icon. Pro mode is a full mixing console.$\r$\n$\r$\nIf wavemix is already installed, this replaces it with version ${VERSION} and keeps your settings.$\r$\n$\r$\nIt installs just for you; no administrator rights are needed."
+!define MUI_WELCOMEPAGE_TITLE "Install ${NAME}"
+!define MUI_WELCOMEPAGE_TEXT "Wavemix is a volume control and audio mixer for Windows.$\r$\n$\r$\nSimple mode rises out of the taskbar when you click its tray icon. Pro mode is a full mixing console.$\r$\n$\r$\nIf Wavemix is already installed, this replaces it with version ${VERSION} and keeps your settings.$\r$\n$\r$\nIt installs just for you; no administrator rights are needed."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP}.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Start wavemix now"
+!define MUI_FINISHPAGE_RUN_TEXT "Start ${NAME} now"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_COMPONENTS
@@ -78,17 +80,17 @@ Section "-Remove the previous version" SecOld
   done:
 SectionEnd
 
-Section "wavemix" SecMain
+Section "${NAME}" SecMain
   SectionIn RO
   !insertmacro StopApp
   SetOutPath "$INSTDIR"
   File "/oname=${APP}.exe" "${EXE}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${APP}.exe"
+  CreateShortcut "$SMPROGRAMS\${NAME}.lnk" "$INSTDIR\${APP}.exe"
 
   ; Add/Remove Programs entry.
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${APP}"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${NAME}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\${APP}.exe"
@@ -106,7 +108,7 @@ Section "Start with Windows" SecStartup
 SectionEnd
 
 Section "Desktop shortcut" SecDesktop
-  CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\${APP}.exe"
+  CreateShortcut "$DESKTOP\${NAME}.lnk" "$INSTDIR\${APP}.exe"
 SectionEnd
 
 ; Before anything is shown: find an existing install, refuse to downgrade by accident, and start
@@ -121,7 +123,7 @@ Function .onInit
   ${VersionCompare} "${VERSION}" "$OldVersion" $0
   StrCmp $0 2 0 keep_choices
     IfSilent abort_older
-    MessageBox MB_YESNO|MB_ICONEXCLAMATION "A newer version of ${APP} ($OldVersion) is already installed.$\r$\n$\r$\nInstall the older version ${VERSION} over it?" IDYES keep_choices
+    MessageBox MB_YESNO|MB_ICONEXCLAMATION "A newer version of ${NAME} ($OldVersion) is already installed.$\r$\n$\r$\nInstall the older version ${VERSION} over it?" IDYES keep_choices
   abort_older:
     Abort
 
@@ -158,6 +160,6 @@ Section "Uninstall"
   ; Settings and presets live in %APPDATA%\wavemix. Keep them unless asked (and always when run
   ; silently, as during an upgrade), so a reinstall picks up where you left off.
   IfSilent +3
-  MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your wavemix settings and presets?" IDNO +2
+  MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your ${NAME} settings and presets?" IDNO +2
   RMDir /r "$APPDATA\${APP}"
 SectionEnd

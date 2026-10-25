@@ -20,6 +20,7 @@ mod shell;
 mod strip;
 mod switch;
 mod theme;
+mod updates;
 
 use strip::StripOutput;
 
@@ -54,6 +55,12 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// Update checking: the shared state, when we last asked, when the app started, and whether
+    /// a failure banner should still show.
+    update: crate::update::Shared,
+    update_checked: Option<std::time::Instant>,
+    update_failed_visible: bool,
+    started: std::time::Instant,
     list_anim: compact::ListAnim,
     page_since: std::time::Instant,
     /// The strip whose editor is open and when it opened, for the editor's fade-in.
@@ -153,6 +160,10 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            update: Default::default(),
+            update_checked: None,
+            update_failed_visible: false,
+            started: std::time::Instant::now(),
             list_anim: compact::ListAnim::default(),
             page_since: std::time::Instant::now(),
             editor_strip: None,
@@ -497,7 +508,8 @@ impl MixerApp {
         const SWITCH_W: f32 = 140.0; // strip::segmented with two options
         let pro = self.view() == View::Console;
         let ctx = ui.ctx().clone();
-        let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), egui::Sense::hover());
+        let (bar, _) =
+            ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), egui::Sense::hover());
         let mid = bar.center().x;
         let left = egui::Rect::from_min_max(bar.min, egui::pos2(mid - SWITCH_W / 2.0, bar.max.y));
         let centre = egui::Rect::from_center_size(bar.center(), vec2(SWITCH_W, BAR_H));
@@ -510,9 +522,16 @@ impl MixerApp {
             |ui| {
                 ui.add_space(4.0);
                 let (mark, _) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::hover());
-                ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT());
-                ui.painter().circle_filled(mark.center(), 3.0, theme::CARD());
-                ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT()));
+                ui.painter()
+                    .circle_filled(mark.center(), 8.0, theme::ACCENT());
+                ui.painter()
+                    .circle_filled(mark.center(), 3.0, theme::CARD());
+                ui.label(
+                    RichText::new("Wavemix")
+                        .size(17.0)
+                        .strong()
+                        .color(theme::TEXT()),
+                );
                 if self.demo && pro {
                     ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM()))
                         .on_hover_text("Showing fake devices and apps");
@@ -529,8 +548,14 @@ impl MixerApp {
                     ui,
                     wid("view-switch"),
                     &[
-                        ("Simple", "A small volume control, like the Windows volume popup"),
-                        ("Pro", "Mixing console: inputs, buses, EQ, gate and compressor"),
+                        (
+                            "Simple",
+                            "A small volume control, like the Windows volume popup",
+                        ),
+                        (
+                            "Pro",
+                            "Mixing console: inputs, buses, EQ, gate and compressor",
+                        ),
                     ],
                     usize::from(pro),
                 ) {
@@ -577,6 +602,7 @@ impl eframe::App for MixerApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.route_housekeeping();
         self.follow_theme(ctx);
+        self.drive_updates(ctx);
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]
@@ -602,6 +628,9 @@ impl eframe::App for MixerApp {
                 ui.set_min_size(ui.available_size());
                 self.top_bar(ui, &snap);
                 ui.add_space(12.0);
+                if self.update_banner_wanted() {
+                    self.update_banner(ui);
+                }
                 if self.offer_switch() {
                     self.switch_banner(ui);
                 }
@@ -617,28 +646,32 @@ impl eframe::App for MixerApp {
                     ui.ctx().request_repaint();
                 }
                 ui.scope(|ui| {
-                ui.set_opacity(t);
-                ui.add_space((1.0 - t) * 10.0);
-                match self.view() {
-                    View::Console if self.config.pro_apps_panel => {
-                        let avail = ui.available_size();
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = SIDE_PANEL_GAP;
-                            let main = vec2(avail.x - SIDE_PANEL_W - SIDE_PANEL_GAP, avail.y);
-                            ui.allocate_ui_with_layout(main, Layout::top_down(Align::Min), |ui| {
-                                self.console(ui)
+                    ui.set_opacity(t);
+                    ui.add_space((1.0 - t) * 10.0);
+                    match self.view() {
+                        View::Console if self.config.pro_apps_panel => {
+                            let avail = ui.available_size();
+                            ui.horizontal_top(|ui| {
+                                ui.spacing_mut().item_spacing.x = SIDE_PANEL_GAP;
+                                let main = vec2(avail.x - SIDE_PANEL_W - SIDE_PANEL_GAP, avail.y);
+                                ui.allocate_ui_with_layout(
+                                    main,
+                                    Layout::top_down(Align::Min),
+                                    |ui| self.console(ui),
+                                );
+                                let side = vec2(SIDE_PANEL_W, avail.y);
+                                ui.allocate_ui_with_layout(
+                                    side,
+                                    Layout::top_down(Align::Min),
+                                    |ui| self.apps_side_panel(ui, &snap),
+                                );
                             });
-                            let side = vec2(SIDE_PANEL_W, avail.y);
-                            ui.allocate_ui_with_layout(side, Layout::top_down(Align::Min), |ui| {
-                                self.apps_side_panel(ui, &snap)
-                            });
-                        });
+                        }
+                        View::Console => self.console(ui),
+                        View::Compact if self.switch.open => self.switch_inline(ui),
+                        View::Compact if self.show_settings => self.settings_inline(ui),
+                        View::Compact => self.compact(ui, &snap),
                     }
-                    View::Console => self.console(ui),
-                    View::Compact if self.switch.open => self.switch_inline(ui),
-                    View::Compact if self.show_settings => self.settings_inline(ui),
-                    View::Compact => self.compact(ui, &snap),
-                }
                 });
             });
         // Esc closes the taskbar flyout, as it does any popup.

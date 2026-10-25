@@ -80,7 +80,8 @@ impl DelayLine {
 
     fn process(&mut self, ms: f32, block: &mut [f32]) {
         let frames = self.buf.len() / 2;
-        let delay = ((ms.clamp(0.0, MAX_BUS_DELAY_MS) * self.rate / 1000.0) as usize).min(frames - 1);
+        let delay =
+            ((ms.clamp(0.0, MAX_BUS_DELAY_MS) * self.rate / 1000.0) as usize).min(frames - 1);
         if delay == 0 {
             // Keep the history current so turning a delay on doesn't replay stale audio.
             for pair in block.chunks_exact(2) {
