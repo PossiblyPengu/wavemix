@@ -186,6 +186,8 @@ pub struct Config {
     pub theme: ThemeMode,
     /// Look for new releases now and then.
     pub check_updates: bool,
+    /// Interface zoom: 1.0 is normal.
+    pub ui_scale: f32,
     /// A version the user said "Later" to, so its banner stays away.
     pub skipped_update: String,
     /// Names you gave devices, keyed by Windows' stable device id (so twins and driver renames
@@ -225,6 +227,7 @@ impl Default for Config {
             hide_windows_osd: true,
             theme: ThemeMode::System,
             check_updates: true,
+            ui_scale: 1.0,
             skipped_update: String::new(),
             device_names: BTreeMap::new(),
             strip_names: Vec::new(),

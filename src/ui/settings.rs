@@ -121,6 +121,30 @@ impl MixerApp {
                 self.theme_dirty = true;
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("Interface size");
+            let mut scale = self.config.ui_scale;
+            egui::ComboBox::from_id_salt("ui-scale")
+                .selected_text(format!("{:.0}%", scale * 100.0))
+                .show_ui(ui, |ui| {
+                    for pct in [90, 100, 115, 130, 150] {
+                        ui.selectable_value(&mut scale, pct as f32 / 100.0, format!("{pct}%"));
+                    }
+                });
+            if (scale - self.config.ui_scale).abs() > f32::EPSILON {
+                self.config.ui_scale = scale;
+                self.config.save();
+                ui.ctx().set_zoom_factor(scale);
+                // The Simple flyout sizes itself; only the Pro window needs resizing.
+                if self.config.view == crate::config::View::Console {
+                    let [w, h] = Self::size_for(&self.config);
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
+                }
+            }
+        })
+        .response
+        .on_hover_text("Makes everything bigger or smaller. Taskbar popup sizes follow.");
         self.update_settings(ui);
         let mut auto = self.config.auto_route;
         if ui
@@ -316,6 +340,9 @@ impl MixerApp {
             }
         }
 
+        section(ui, "Setup check");
+        self.setup_check(ui);
+
         section(ui, "Names");
         hint(
             ui,
@@ -427,6 +454,78 @@ impl MixerApp {
                 self.preset_name.clear();
             }
         });
+    }
+}
+
+impl MixerApp {
+    /// A short checklist for the parts of the setup that most often go wrong, each with its fix.
+    fn setup_check(&mut self, ui: &mut Ui) {
+        let devices = self.engine.devices();
+        let cable_installed = devices
+            .inputs
+            .iter()
+            .any(|d| d.name.contains("CABLE Output"));
+        let (routed, cable_in) = self.route_state();
+        let running = self.engine.is_running();
+
+        let row = |ui: &mut Ui, ok: bool, text: &str| {
+            ui.horizontal(|ui| {
+                let (mark, colour) = if ok {
+                    ("✔", theme::METER_GREEN())
+                } else {
+                    ("✖", theme::NOTE_TEXT())
+                };
+                ui.label(RichText::new(mark).color(colour));
+                ui.label(text);
+            });
+        };
+
+        row(
+            ui,
+            cable_installed,
+            "A virtual cable (VB-Cable) is installed",
+        );
+        if !cable_installed {
+            ui.hyperlink_to("Get VB-Cable (free)", "https://vb-audio.com/Cable/");
+        }
+        row(
+            ui,
+            cable_installed && cable_in.is_some(),
+            "The cable's playback side (CABLE Input) is enabled",
+        );
+        if cable_installed && cable_in.is_none() {
+            hint(
+                ui,
+                "In Windows sound settings, Playback tab: right-click, tick Show Disabled Devices, then enable CABLE Input.",
+            );
+            if ui.button("Open Windows sound settings").clicked() {
+                open_sound_settings();
+            }
+        }
+        row(ui, running, "The mixing engine is on");
+        if !running && ui.button("Turn the engine on").clicked() {
+            self.engine.set_running(true);
+            self.config.engine.io.engine_on = true;
+            self.mark_engine_dirty();
+        }
+        row(ui, routed, "Windows sound goes through Wavemix");
+        if running && !routed {
+            if let Some(cable) = cable_in {
+                if ui.button("Route Windows audio").clicked() {
+                    self.route_windows_audio(&cable);
+                }
+            }
+        }
+    }
+}
+
+/// Windows' classic Sound control panel.
+fn open_sound_settings() {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("control")
+            .arg("mmsys.cpl")
+            .spawn();
     }
 }
 

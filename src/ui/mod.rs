@@ -126,6 +126,7 @@ impl MixerApp {
         demo: bool,
         background: bool,
     ) -> Self {
+        cc.egui_ctx.set_zoom_factor(config.ui_scale.clamp(0.8, 1.6));
         theme::set_dark(theme::wants_dark(config.theme));
         theme::apply(&cc.egui_ctx);
         #[cfg(not(windows))]
@@ -217,13 +218,16 @@ impl MixerApp {
 
     /// Window size for the current mode (Pro grows to make room for its Apps panel).
     pub fn size_for(config: &Config) -> [f32; 2] {
-        match config.view {
+        let [w, h] = match config.view {
             View::Console if config.pro_apps_panel => {
                 [PRO_SIZE[0] + SIDE_PANEL_W + SIDE_PANEL_GAP, PRO_SIZE[1]]
             }
             View::Console => PRO_SIZE,
             View::Compact => SIMPLE_SIZE,
-        }
+        };
+        // The window grows with the zoom so the same layout fits.
+        let z = config.ui_scale;
+        [w * z, h * z]
     }
 
     /// Which mode's interface to draw.
@@ -645,6 +649,13 @@ impl eframe::App for MixerApp {
                 // Each page eases in: a short fade and rise whenever the view changes.
                 let page = (self.view(), self.switch.open, self.show_settings);
                 if page != self.shown_page {
+                    // The Pro console can't be squeezed below a usable size.
+                    let min = match page.0 {
+                        View::Console => vec2(1000.0, 560.0),
+                        View::Compact => vec2(300.0, 200.0),
+                    };
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(min));
                     self.shown_page = page;
                     self.page_since = std::time::Instant::now();
                 }

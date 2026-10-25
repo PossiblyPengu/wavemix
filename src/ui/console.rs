@@ -379,7 +379,7 @@ impl MixerApp {
     /// Whether Windows already plays into the mixer, and the playback device that would do it:
     /// the other end of the cable that Virtual 1 listens to. Other virtual devices (Voicemeeter's,
     /// say) don't count, since nothing in wavemix listens to them.
-    fn route_state(&self) -> (bool, Option<crate::model::Device>) {
+    pub(super) fn route_state(&self) -> (bool, Option<crate::model::Device>) {
         let snap = self.backend.snapshot();
         // Before the mixer has been set up, guess the same cable it will choose.
         let listening = self.config.engine.io.inputs[HARDWARE_STRIPS]
@@ -652,7 +652,7 @@ impl MixerApp {
         }
     }
 
-    fn route_windows_audio(&mut self, cable: &crate::model::Device) {
+    pub(super) fn route_windows_audio(&mut self, cable: &crate::model::Device) {
         let snap = self.backend.snapshot();
         self.config.restore_playback = snap
             .devices

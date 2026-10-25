@@ -465,7 +465,8 @@ impl MixerApp {
             None => MonitorInfo::primary(),
         };
         let edge = taskbar_edge(mon.full, mon.work, anchor);
-        let scale = mon.dpi as f32 / 96.0;
+        // Points to pixels: the display's scale times the interface zoom.
+        let scale = mon.dpi as f32 / 96.0 * self.config.ui_scale;
         let w_px = (SIMPLE_SIZE[0] * scale).round() as i32;
         let h_px = (self.flyout_height_points(&mon) * scale).round() as i32;
         let margin = (FLYOUT_MARGIN * scale).round() as i32;
@@ -498,7 +499,7 @@ impl MixerApp {
 
     /// The flyout's height in points: as tall as its content, within sensible limits.
     fn flyout_height_points(&self, mon: &MonitorInfo) -> f32 {
-        let scale = mon.dpi as f32 / 96.0;
+        let scale = mon.dpi as f32 / 96.0 * self.config.ui_scale;
         let room = (mon.work.bottom - mon.work.top) as f32 / scale - 2.0 * FLYOUT_MARGIN;
         self.simple_height
             .get()
