@@ -23,6 +23,19 @@ pub fn anim(ui: &Ui, id: Id, on: bool, secs: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// An amber ring around a widget that has keyboard focus (Tab / arrow navigation), since these
+/// widgets are drawn by hand and egui's own focus outline doesn't cover them.
+pub fn focus_ring(ui: &Ui, resp: &Response, rect: Rect, radius: CornerRadius) {
+    if resp.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            radius,
+            Stroke::new(2.0, theme::ACCENT()),
+            StrokeKind::Outside,
+        );
+    }
+}
+
 /// Blend two colours by `t`.
 pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     a.lerp_to_gamma(b, t.clamp(0.0, 1.0))
@@ -130,6 +143,7 @@ pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
     let fill = mix(rest, theme::MUTE(), on);
     let fg = mix(theme::TEXT_DIM(), Color32::WHITE, on);
     ui.painter().rect_filled(rect, theme::pill(size.y), fill);
+    focus_ring(ui, &resp, rect, theme::pill(size.y));
     speaker_icon(ui.painter(), rect.center(), size.y * 0.66, muted, fg);
     resp.on_hover_text(if muted { "Unmute" } else { "Mute" })
 }
@@ -155,6 +169,7 @@ pub fn chip(ui: &mut Ui, text: &str, width: f32, accent: bool) -> Response {
             StrokeKind::Inside,
         );
     }
+    focus_ring(ui, &resp, rect, theme::pill(H));
     let label = truncate(ui, text, width - 36.0, 11.5);
     ui.painter().text(
         pos2(rect.left() + 13.0, rect.center().y),
@@ -441,6 +456,7 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
         0.0
     });
     ui.painter().rect_filled(body, theme::pill(size.y), fill);
+    focus_ring(ui, &resp, rect, theme::pill(size.y));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -472,6 +488,7 @@ pub fn process_button(ui: &mut Ui, text: &str, on: bool, open: bool, size: egui:
         0.0
     });
     ui.painter().rect_filled(body, theme::pill(size.y), fill);
+    focus_ring(ui, &resp, rect, theme::pill(size.y));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -524,6 +541,7 @@ pub fn ghost_button(ui: &mut Ui, text: &str, active: bool) -> Response {
     );
     let fill = mix(wash, theme::ACTIVE(), on);
     ui.painter().rect_filled(rect, theme::pill(30.0), fill);
+    focus_ring(ui, &resp, rect, theme::pill(30.0));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,

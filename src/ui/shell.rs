@@ -196,6 +196,10 @@ impl MixerApp {
             .as_ref()
             .map(|t| t.poll())
             .unwrap_or_default();
+        // A second copy of the app was started: show this one.
+        if crate::instance::take_open_request() {
+            self.apply_mode(ctx, win.as_deref());
+        }
         for action in actions {
             match action {
                 TrayAction::Toggle => {

@@ -107,6 +107,7 @@ impl MixerApp {
                         .clicked();
                         let later = strip::ghost_button(ui, "Later", false).clicked();
                         if go {
+                            self.update_failed_visible = true;
                             update::download(&self.update, r.clone(), Self::wake(&ctx));
                         }
                         if later {

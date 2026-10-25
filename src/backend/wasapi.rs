@@ -298,18 +298,35 @@ impl WasapiEngine {
     }
 
     fn set_default(&self, id: &str) {
-        let wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
-        unsafe {
-            let Ok(policy) =
-                CoCreateInstance::<_, IPolicyConfig>(&POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
-            else {
-                return;
-            };
-            for role in [eConsole, eMultimedia, eCommunications] {
-                let _ = policy.SetDefaultEndpoint(PCWSTR(wide.as_ptr()), role);
-            }
+        set_default_endpoint(id);
+    }
+}
+
+/// Make `id` the Windows default for every role.
+fn set_default_endpoint(id: &str) {
+    let wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        let Ok(policy) =
+            CoCreateInstance::<_, IPolicyConfig>(&POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
+        else {
+            return;
+        };
+        for role in [eConsole, eMultimedia, eCommunications] {
+            let _ = policy.SetDefaultEndpoint(PCWSTR(wide.as_ptr()), role);
         }
     }
+}
+
+/// Last-ditch: after a crash, put Windows' default playback device back where it was before
+/// Wavemix moved it to the virtual cable. Runs from the panic hook, on whatever thread crashed.
+pub fn restore_playback_after_crash() {
+    let Some(id) = crate::config::Config::load().restore_playback else {
+        return;
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+    set_default_endpoint(&id);
 }
 
 impl Default for WasapiEngine {

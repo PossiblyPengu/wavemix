@@ -9,6 +9,8 @@ mod config;
 mod engine;
 #[cfg(windows)]
 mod hotkeys;
+#[cfg(windows)]
+mod instance;
 mod model;
 mod osd;
 mod preset;
@@ -110,6 +112,21 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    // Only one Wavemix at a time; a second launch just brings the first one up.
+    #[cfg(windows)]
+    if !instance::claim() {
+        return Ok(());
+    }
+    // If something goes badly wrong while Windows' sound is routed through the mixer, put it back
+    // on the speakers it came from rather than leaving the system silent.
+    #[cfg(windows)]
+    {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            backend::wasapi::restore_playback_after_crash();
+            previous(info);
+        }));
+    }
     let config = Config::load();
     // The real engine needs Windows; elsewhere (and with --demo) run against animated fake data.
     let demo = !cfg!(windows) || std::env::args().any(|a| a == "--demo");
@@ -149,6 +166,11 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();
+            #[cfg(windows)]
+            instance::on_open_request({
+                let ctx = ctx.clone();
+                move || ctx.request_repaint()
+            });
             let repaint = move || ctx.request_repaint();
             let handle = if demo {
                 backend::spawn(repaint, backend::mock::MockEngine::new)

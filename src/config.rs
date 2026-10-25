@@ -184,10 +184,21 @@ fn path() -> Option<PathBuf> {
 impl Config {
     /// Missing or unreadable config falls back to defaults; a bad file must never block startup.
     pub fn load() -> Self {
-        path()
-            .and_then(|p| fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        let Some(p) = path() else {
+            return Self::default();
+        };
+        let Ok(text) = fs::read_to_string(&p) else {
+            return Self::default();
+        };
+        match serde_json::from_str(&text) {
+            Ok(config) => config,
+            Err(_) => {
+                // Unreadable settings: keep a copy before the defaults overwrite them, so a stray
+                // edit or a half-written file doesn't silently erase everything.
+                let _ = fs::copy(&p, p.with_extension("json.bad"));
+                Self::default()
+            }
+        }
     }
 
     pub fn save(&self) {
