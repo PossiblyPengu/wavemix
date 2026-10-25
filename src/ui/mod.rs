@@ -55,6 +55,8 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// When the output test click switches itself off.
+    click_until: Option<std::time::Instant>,
     /// Update checking: the shared state, when we last asked, when the app started, and whether
     /// a failure banner should still show.
     update: crate::update::Shared,
@@ -163,6 +165,7 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            click_until: None,
             update: Default::default(),
             update_checked: None,
             update_failed_visible: false,
@@ -633,10 +636,10 @@ impl eframe::App for MixerApp {
                 ui.set_min_size(ui.available_size());
                 self.top_bar(ui, &snap);
                 ui.add_space(12.0);
+                // One notice at a time: an update comes first, and nothing crowds the editor.
                 if self.update_banner_wanted() {
                     self.update_banner(ui);
-                }
-                if self.offer_switch() {
+                } else if self.offer_switch() && self.editing.is_none() {
                     self.switch_banner(ui);
                 }
                 // Each page eases in: a short fade and rise whenever the view changes.

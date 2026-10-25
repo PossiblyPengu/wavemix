@@ -145,9 +145,11 @@ impl Mixer {
 
         for (i, (dsp, p)) in self.strips.iter_mut().zip(&params.strips).enumerate() {
             let buf = &mut inputs[i];
-            dsp.gate.process(&p.gate, buf);
-            dsp.eq.process(&p.eq, buf);
-            dsp.comp.process(&p.comp, buf);
+            if !params.bypass_fx {
+                dsp.gate.process(&p.gate, buf);
+                dsp.eq.process(&p.eq, buf);
+                dsp.comp.process(&p.comp, buf);
+            }
             if p.mono {
                 for f in buf.chunks_exact_mut(2) {
                     let m = (f[0] + f[1]) * 0.5;
@@ -261,6 +263,30 @@ mod tests {
         let (mut ins, mut outs2) = blocks(value);
         mixer.process(params, &mut ins, &mut outs2, &levels);
         (outs2, levels)
+    }
+
+    #[test]
+    fn bypassing_fx_skips_the_processors() {
+        let mut m = Mixer::new(48_000.0);
+        let mut params = EngineParams::default();
+        // A closed gate would silence the strip; bypass must let it through.
+        params.strips[0].gate.enabled = true;
+        params.strips[0].gate.threshold_db = 0.0;
+        params.bypass_fx = true;
+        let levels = Levels::default();
+        let mut ins = vec![vec![0.0f32; 960]; STRIPS];
+        let mut outs = vec![vec![0.0f32; 960]; BUSES];
+        // Run long enough for a gate to close.
+        for _ in 0..100 {
+            for f in ins[0].iter_mut() {
+                *f = 0.1;
+            }
+            m.process(&params, &mut ins, &mut outs, &levels);
+        }
+        assert!(
+            outs[0].iter().any(|v| v.abs() > 0.05),
+            "bypassed gate still muted the strip"
+        );
     }
 
     #[test]

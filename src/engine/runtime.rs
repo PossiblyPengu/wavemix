@@ -25,6 +25,9 @@ use super::rate::{ring, write_frames, RateReader};
 pub const ENGINE_RATE: u32 = 48_000;
 /// Frames per mix block (10 ms).
 pub const BLOCK: usize = 480;
+/// Test click: every this many 10 ms blocks, lasting this many frames (about 5 ms).
+const CLICK_EVERY_BLOCKS: u64 = 50;
+const CLICK_FRAMES: usize = 240;
 const BLOCK_DURATION: Duration = Duration::from_millis(10);
 /// Ring capacity per device, in frames: generous, since the drift controller keeps the real fill
 /// near the latency target.
@@ -75,6 +78,8 @@ pub struct Shared {
     version: AtomicU64,
     pub levels: Levels,
     running: AtomicBool,
+    /// Play a short click on every output twice a second, for lining outputs up by ear.
+    test_click: AtomicBool,
     /// Mix load, in tenths of a percent of the 10 ms block budget.
     cpu_permille: AtomicU32,
     input_underruns: [AtomicU64; STRIPS],
@@ -129,6 +134,7 @@ impl Engine {
             version: AtomicU64::new(1),
             levels: Levels::default(),
             running: AtomicBool::new(config.engine_on),
+            test_click: AtomicBool::new(false),
             cpu_permille: AtomicU32::new(0),
             input_underruns: Default::default(),
             output_underruns: Default::default(),
@@ -214,6 +220,14 @@ impl Engine {
         let _ = self.io_tx.send(IoCmd::SetOutput(bus, device));
     }
 
+    pub fn set_test_click(&self, on: bool) {
+        self.shared.test_click.store(on, Ordering::Relaxed);
+    }
+
+    pub fn test_click(&self) -> bool {
+        self.shared.test_click.load(Ordering::Relaxed)
+    }
+
     pub fn set_running(&self, on: bool) {
         self.shared.running.store(on, Ordering::Relaxed);
         let _ = self.io_tx.send(IoCmd::SetRunning(on));
@@ -272,6 +286,7 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
     let sleeper = spin_sleep::SpinSleeper::default();
     let mut next = Instant::now();
     let mut cpu = 0.0f32;
+    let mut blocks = 0u64;
 
     while !shutdown.load(Ordering::Relaxed) {
         while let Ok(msg) = rx.try_recv() {
@@ -306,6 +321,19 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
             }
         }
         mixer.process(&params, &mut ins, &mut outs, &shared.levels);
+        // A click every half second on every output, so you can hear whether they line up.
+        if shared.test_click.load(Ordering::Relaxed) && blocks.is_multiple_of(CLICK_EVERY_BLOCKS) {
+            for out in outs.iter_mut() {
+                for (n, frame) in out.chunks_exact_mut(2).take(CLICK_FRAMES).enumerate() {
+                    let t = n as f32 / ENGINE_RATE as f32;
+                    let fade = 1.0 - n as f32 / CLICK_FRAMES as f32;
+                    let v = 0.3 * fade * (2.0 * std::f32::consts::PI * 1500.0 * t).sin();
+                    frame[0] += v;
+                    frame[1] += v;
+                }
+            }
+        }
+        blocks = blocks.wrapping_add(1);
         for b in 0..BUSES {
             if let Some(prod) = &mut sinks[b] {
                 if write_frames(prod, &outs[b]) < BLOCK {

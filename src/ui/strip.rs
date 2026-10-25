@@ -378,6 +378,31 @@ pub fn db_fader(
         }
     }
 
+    // Clip light: comes on when the signal reaches full scale and stays on until it is clicked, so
+    // a brief overload isn't missed.
+    {
+        let clip_id = id.with("clip");
+        let hit_full_scale = peaks.iter().any(|p| *p >= 0.999);
+        let was = ui.data(|d| d.get_temp::<bool>(clip_id)).unwrap_or(false);
+        let light =
+            Rect::from_center_size(pos2(rect.left() + 41.0, rect.top() + 3.0), vec2(18.0, 5.0));
+        let resp = ui
+            .interact(
+                light.expand2(vec2(4.0, 5.0)),
+                id.with("clipbtn"),
+                Sense::click(),
+            )
+            .on_hover_text("Lit when the signal reached full scale. Click to clear.");
+        let lit = (was || hit_full_scale) && !resp.clicked();
+        ui.data_mut(|d| d.insert_temp(clip_id, lit));
+        let color = if lit {
+            theme::METER_RED()
+        } else {
+            theme::METER_BG()
+        };
+        ui.painter().rect_filled(light, theme::pill(5.0), color);
+    }
+
     // Track and fill: a slim capsule, filled from the bottom up to the knob.
     let track = Rect::from_min_max(pos2(track_x - 4.0, top), pos2(track_x + 4.0, bottom));
     let hit = Rect::from_min_max(

@@ -127,6 +127,11 @@ fn db_text(db: f32) -> String {
 
 impl MixerApp {
     pub(super) fn console(&mut self, ui: &mut Ui) {
+        // The test click turns itself off after a while, so it can't be left on by accident.
+        if self.click_until.is_some_and(|t| Instant::now() > t) {
+            self.click_until = None;
+            self.engine.set_test_click(false);
+        }
         self.auto_configure();
         if self.editing.is_some()
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
@@ -140,6 +145,13 @@ impl MixerApp {
         let stats = self.engine.stats();
 
         self.engine_bar(ui, &stats, &devices);
+        // The bar can change this flag; don't let the copy taken above write the old value back.
+        let bypass = self.engine.params().bypass_fx;
+        params.bypass_fx = bypass;
+        let before = EngineParams {
+            bypass_fx: bypass,
+            ..before
+        };
         ui.add_space(8.0);
 
         // Use the whole window: the faders take the height left over once the controls and (if
@@ -290,6 +302,18 @@ impl MixerApp {
                     if running {
                         ui.add_space(8.0);
                         self.route_control(ui);
+                    }
+                    if running {
+                        let mut p = self.engine.params();
+                        if strip::toggle(ui, "Bypass FX", p.bypass_fx, vec2(92.0, 30.0), theme::ACCENT())
+                            .on_hover_text(
+                                "Skip every strip's gate, EQ and compressor, to hear what they are doing",
+                            )
+                            .clicked()
+                        {
+                            p.bypass_fx = !p.bypass_fx;
+                            self.commit_params(p);
+                        }
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         // Show or hide the per-app list beside the console, growing or shrinking
@@ -596,7 +620,7 @@ impl MixerApp {
     }
 
     /// Say where the sound stops when something is playing but nothing is heard.
-    fn signal_hint(&self, ui: &mut Ui, live: bool) {
+    fn signal_hint(&mut self, ui: &mut Ui, live: bool) {
         if !live {
             return;
         }
@@ -620,6 +644,12 @@ impl MixerApp {
         };
         ui.add_space(4.0);
         ui.label(RichText::new(msg).size(12.0).color(theme::NOTE_TEXT()));
+        if strip::ghost_button(ui, "Give Windows its audio back", false)
+            .on_hover_text("Stop routing and play straight to your speakers again")
+            .clicked()
+        {
+            self.unroute_windows_audio();
+        }
     }
 
     fn route_windows_audio(&mut self, cable: &crate::model::Device) {
@@ -1162,7 +1192,20 @@ impl MixerApp {
                     "Hold this output back so it lines up with a slower one, for example wired speakers waiting for Bluetooth headphones",
                 );
             egui::Popup::menu(&delay).show(|ui| {
-                ui.set_min_width(160.0);
+                ui.set_min_width(190.0);
+                strip::caption(ui, "TEST CLICK");
+                let mut click = self.engine.test_click();
+                if ui
+                    .checkbox(&mut click, "Click on every output")
+                    .on_hover_text(
+                        "A short click twice a second on each output, to hear whether they line up. Add delay to the one that's early.",
+                    )
+                    .changed()
+                {
+                    self.engine.set_test_click(click);
+                    self.click_until = click.then(|| Instant::now() + Duration::from_secs(20));
+                }
+                ui.add_space(4.0);
                 strip::caption(ui, "DELAY");
                 ui.add(
                     egui::DragValue::new(&mut p.delay_ms)

@@ -160,6 +160,8 @@ impl Default for BusParams {
 pub struct EngineParams {
     pub strips: [StripParams; STRIPS],
     pub buses: [BusParams; BUSES],
+    /// Skip every strip's gate, EQ and compressor, to hear what they are doing.
+    pub bypass_fx: bool,
 }
 
 impl Default for EngineParams {
@@ -167,6 +169,7 @@ impl Default for EngineParams {
         Self {
             strips: [StripParams::default(); STRIPS],
             buses: [BusParams::default(); BUSES],
+            bypass_fx: false,
         }
     }
 }
