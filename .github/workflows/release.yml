@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Publish from the Actions tab (or the API) without pushing a tag: the release step creates it.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, matching Cargo.toml (for example 0.13.0)'
+        required: true
 
 permissions:
   contents: write
@@ -13,16 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Work out the version
+        id: v
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") { $v = "${{ inputs.version }}" } else { $v = "${{ github.ref_name }}" }
+          $v = $v.TrimStart('v')
+          if ((Select-String -Path Cargo.toml -Pattern "^version = `"$v`"" -Quiet) -ne $true) { throw "Cargo.toml is not at version $v" }
+          "version=$v" >> $env:GITHUB_OUTPUT
       - run: cargo build --release
       - name: Build the installer
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = "${{ steps.v.outputs.version }}"
           & "C:\Program Files (x86)\NSIS\makensis.exe" "/DVERSION=$version" "/DEXE=$PWD\target\release\wavemix.exe" "/DOUT=$PWD\wavemix-setup-$version.exe" installer\wavemix.nsi
       - uses: softprops/action-gh-release@v2
         with:
-          name: Wavemix ${{ github.ref_name }}
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Wavemix ${{ steps.v.outputs.version }}
           generate_release_notes: true
           files: |
             wavemix-setup-*.exe
