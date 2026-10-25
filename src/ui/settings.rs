@@ -359,6 +359,22 @@ impl MixerApp {
         section(ui, "Setup check");
         self.setup_check(ui);
 
+        section(ui, "Help");
+        hint(
+            ui,
+            "If something misbehaves, this writes what Wavemix can see (devices, programs, routing, \
+             errors) to a text file on your desktop to attach to a bug report.",
+        );
+        if ui.button("Save a diagnostics report").clicked() {
+            self.diagnostics_note = Some(match self.save_diagnostics() {
+                Ok(path) => format!("Saved to {}", path.display()),
+                Err(e) => format!("Couldn't save it: {e}"),
+            });
+        }
+        if let Some(note) = &self.diagnostics_note {
+            hint(ui, note);
+        }
+
         section(ui, "Names");
         hint(
             ui,

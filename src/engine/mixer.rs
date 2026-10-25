@@ -3,8 +3,9 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use super::dsp::{db_to_gain, Compressor, Eq, Gate, Limiter};
-use super::params::{EngineParams, StripParams, BUSES, STRIPS};
+use super::denoise::Denoiser;
+use super::dsp::{db_to_gain, gain_to_db, Compressor, Eq, Gate, Limiter, ParamEq};
+use super::params::{EngineParams, StripParams, BUSES, HARDWARE_STRIPS, STRIPS};
 
 /// Meters the audio thread publishes and the UI reads. Peak values are linear amplitude, stored
 /// as `f32` bits in atomics so neither side ever waits on the other.
@@ -48,11 +49,15 @@ struct StripDsp {
     gate: Gate,
     eq: Eq,
     comp: Compressor,
+    /// Created when noise suppression is switched on, dropped when it is switched off, so it
+    /// starts fresh each time.
+    denoiser: Option<Box<Denoiser>>,
     /// Linear gain the last block ended on; the next block ramps from here.
     gain: f32,
 }
 
 struct BusDsp {
+    eq: ParamEq,
     limiter: Limiter,
     gain: f32,
     delay: DelayLine,
@@ -106,6 +111,8 @@ impl DelayLine {
 pub struct Mixer {
     strips: Vec<StripDsp>,
     buses: Vec<BusDsp>,
+    /// How far ducking has turned the virtual strips down right now, in dB (0 or negative).
+    duck_db: f32,
 }
 
 impl Mixer {
@@ -116,16 +123,19 @@ impl Mixer {
                     gate: Gate::new(sample_rate),
                     eq: Eq::new(sample_rate),
                     comp: Compressor::new(sample_rate),
+                    denoiser: None,
                     gain: 0.0,
                 })
                 .collect(),
             buses: (0..BUSES)
                 .map(|_| BusDsp {
+                    eq: ParamEq::new(sample_rate),
                     limiter: Limiter::new(sample_rate),
                     gain: 0.0,
                     delay: DelayLine::new(sample_rate),
                 })
                 .collect(),
+            duck_db: 0.0,
         }
     }
 
@@ -145,6 +155,14 @@ impl Mixer {
 
         for (i, (dsp, p)) in self.strips.iter_mut().zip(&params.strips).enumerate() {
             let buf = &mut inputs[i];
+            // Noise suppression comes first, so the gate and EQ work on a clean voice.
+            if p.denoise {
+                dsp.denoiser
+                    .get_or_insert_with(|| Box::new(Denoiser::new()))
+                    .process(buf);
+            } else if dsp.denoiser.is_some() {
+                dsp.denoiser = None;
+            }
             if !params.bypass_fx {
                 dsp.gate.process(&p.gate, buf);
                 dsp.eq.process(&p.eq, buf);
@@ -158,8 +176,32 @@ impl Mixer {
                 }
             }
             let silenced = p.mute || (any_solo && !p.solo);
-            let target = if silenced { 0.0 } else { db_to_gain(p.gain_db) };
+            let mut target = if silenced { 0.0 } else { db_to_gain(p.gain_db) };
+            // Ducking turns the app strips down while the voice strip is talking.
+            if i >= HARDWARE_STRIPS && params.duck.enabled {
+                target *= db_to_gain(self.duck_db);
+            }
             apply_gain_and_balance(buf, &mut dsp.gain, target, p);
+            if params.duck.enabled && i == params.duck.source {
+                // Judged on what the voice strip actually puts out (so muting it stops ducking).
+                let peaks = peak_of(buf);
+                let level_db = gain_to_db(peaks[0].max(peaks[1]));
+                let goal = if level_db > params.duck.threshold_db {
+                    -params.duck.reduction_db.abs()
+                } else {
+                    0.0
+                };
+                let ms = if goal < self.duck_db {
+                    params.duck.attack_ms
+                } else {
+                    params.duck.release_ms
+                };
+                // One step per 10 ms block.
+                let coef = 1.0 - (-10.0 / ms.max(1.0)).exp();
+                self.duck_db += (goal - self.duck_db) * coef;
+            } else if !params.duck.enabled {
+                self.duck_db = 0.0;
+            }
 
             let peaks = peak_of(buf);
             store(&levels.strips[i][0], peaks[0]);
@@ -180,6 +222,7 @@ impl Mixer {
             let buf = &mut outputs[b];
             let target = if p.mute { 0.0 } else { db_to_gain(p.gain_db) };
             ramp_gain(buf, &mut dsp.gain, target);
+            dsp.eq.process(&p.eq, buf);
             if p.limiter {
                 dsp.limiter.process(p.limiter_ceiling_db, buf);
             }
@@ -263,6 +306,71 @@ mod tests {
         let (mut ins, mut outs2) = blocks(value);
         mixer.process(params, &mut ins, &mut outs2, &levels);
         (outs2, levels)
+    }
+
+    /// Run `blocks` blocks with a 1 kHz sine of the given level on each listed strip, and return
+    /// the RMS of the last block on bus A1.
+    fn rms_after(params: &EngineParams, loud: &[(usize, f32)], blocks: usize) -> f32 {
+        let mut m = Mixer::new(48_000.0);
+        let levels = Levels::default();
+        let mut ins = vec![vec![0.0f32; 960]; STRIPS];
+        let mut outs = vec![vec![0.0f32; 960]; BUSES];
+        let mut t = 0usize;
+        for _ in 0..blocks {
+            for &(strip, amp) in loud {
+                for (n, f) in ins[strip].chunks_exact_mut(2).enumerate() {
+                    let v = amp * (2.0 * std::f32::consts::PI * 1000.0 * (t + n) as f32 / 48_000.0).sin();
+                    f[0] = v;
+                    f[1] = v;
+                }
+            }
+            t += 480;
+            m.process(params, &mut ins, &mut outs, &levels);
+        }
+        (outs[0].iter().map(|v| v * v).sum::<f32>() / outs[0].len() as f32).sqrt()
+    }
+
+    #[test]
+    fn a_bus_equaliser_boosts_the_band_it_is_set_to() {
+        let flat = rms_after(&EngineParams::default(), &[(0, 0.1)], 40);
+        let mut params = EngineParams::default();
+        params.buses[0].eq.enabled = true;
+        params.buses[0].eq.bands[2].freq = 1000.0;
+        params.buses[0].eq.bands[2].gain_db = 12.0;
+        let boosted = rms_after(&params, &[(0, 0.1)], 40);
+        let gain_db = 20.0 * (boosted / flat).log10();
+        assert!((gain_db - 12.0).abs() < 1.5, "boost was {gain_db} dB");
+        // A disabled equaliser changes nothing even with gains set.
+        params.buses[0].eq.enabled = false;
+        let off = rms_after(&params, &[(0, 0.1)], 40);
+        assert!((off - flat).abs() < 1e-4);
+    }
+
+    #[test]
+    fn ducking_turns_app_strips_down_while_the_voice_is_loud() {
+        // Strip 0 is the voice (sent nowhere); strip 3 is an app, sent to A1.
+        let mut params = EngineParams::default();
+        params.strips[0].sends = [false; BUSES];
+        params.strips[HARDWARE_STRIPS].sends = [true, false, false, false, false];
+        let app_only = rms_after(&params, &[(HARDWARE_STRIPS, 0.2)], 150);
+        params.duck.enabled = true;
+        params.duck.source = 0;
+        params.duck.reduction_db = 12.0;
+        params.duck.threshold_db = -40.0;
+        // Voice quiet: nothing ducks.
+        let quiet = rms_after(&params, &[(HARDWARE_STRIPS, 0.2), (0, 0.001)], 150);
+        assert!((quiet - app_only).abs() / app_only < 0.05, "ducked with no voice");
+        // Voice loud: the app drops by about the set amount.
+        let ducked = rms_after(&params, &[(HARDWARE_STRIPS, 0.2), (0, 0.5)], 150);
+        let drop_db = 20.0 * (app_only / ducked).log10();
+        assert!((drop_db - 12.0).abs() < 1.5, "dropped {drop_db} dB");
+    }
+
+    #[test]
+    fn noise_suppression_leaves_silence_silent() {
+        let mut params = EngineParams::default();
+        params.strips[0].denoise = true;
+        assert!(rms_after(&params, &[], 20) < 1e-4);
     }
 
     #[test]

@@ -14,6 +14,7 @@ use crate::model::{group_apps, AppStrip, Command, Flow, IconData, Snapshot};
 
 mod compact;
 mod console;
+mod diagnostics;
 mod settings;
 #[cfg(windows)]
 mod shell;
@@ -55,6 +56,8 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// Result of the last "save diagnostics" click, shown in Settings.
+    diagnostics_note: Option<String>,
     /// What was playing and which device was default last time presets' triggers were checked.
     last_activity: Option<crate::preset::Activity>,
     /// When the output test click switches itself off.
@@ -168,6 +171,7 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            diagnostics_note: None,
             last_activity: None,
             click_until: None,
             update: Default::default(),

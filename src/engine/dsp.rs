@@ -3,7 +3,9 @@
 
 use std::f32::consts::PI;
 
-use super::params::{CompParams, EqParams, GateParams};
+use super::params::{
+    BandKind, BandParams, CompParams, EqParams, GateParams, ParamEqParams, BUS_EQ_BANDS,
+};
 
 pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
@@ -101,6 +103,35 @@ impl Coeffs {
         )
     }
 
+    /// Second-order high-pass at `f0` (Butterworth-like at q = 0.707).
+    pub fn high_pass(fs: f32, f0: f32, q: f32) -> Self {
+        let w0 = 2.0 * PI * f0.clamp(10.0, fs * 0.45) / fs;
+        let alpha = w0.sin() / (2.0 * q.max(0.1));
+        let c = w0.cos();
+        Self::normalise(
+            (1.0 + c) / 2.0,
+            -(1.0 + c),
+            (1.0 + c) / 2.0,
+            1.0 + alpha,
+            -2.0 * c,
+            1.0 - alpha,
+        )
+    }
+
+    pub fn low_pass(fs: f32, f0: f32, q: f32) -> Self {
+        let w0 = 2.0 * PI * f0.clamp(10.0, fs * 0.45) / fs;
+        let alpha = w0.sin() / (2.0 * q.max(0.1));
+        let c = w0.cos();
+        Self::normalise(
+            (1.0 - c) / 2.0,
+            1.0 - c,
+            (1.0 - c) / 2.0,
+            1.0 + alpha,
+            -2.0 * c,
+            1.0 - alpha,
+        )
+    }
+
     /// Magnitude response in dB at `freq` Hz.
     pub fn magnitude_db(&self, fs: f32, freq: f32) -> f32 {
         let w = 2.0 * std::f64::consts::PI * freq as f64 / fs as f64;
@@ -132,6 +163,69 @@ pub fn eq_response_db(p: &EqParams, fs: f32, freq: f32) -> f32 {
         .iter()
         .map(|c| c.magnitude_db(fs, freq))
         .sum()
+}
+
+/// One band of the bus equaliser as filter coefficients (flat if the band is off).
+pub fn band_coeffs(b: &BandParams, fs: f32) -> Coeffs {
+    if !b.on {
+        return Coeffs::IDENTITY;
+    }
+    match b.kind {
+        BandKind::Peak => Coeffs::peaking(fs, b.freq, b.gain_db, b.q),
+        BandKind::LowShelf => Coeffs::low_shelf(fs, b.freq, b.gain_db),
+        BandKind::HighShelf => Coeffs::high_shelf(fs, b.freq, b.gain_db),
+        BandKind::HighPass => Coeffs::high_pass(fs, b.freq, b.q),
+        BandKind::LowPass => Coeffs::low_pass(fs, b.freq, b.q),
+    }
+}
+
+/// Combined response of the bus equaliser at `freq`, in dB. Used by the UI to draw the curve.
+pub fn param_eq_response_db(p: &ParamEqParams, fs: f32, freq: f32) -> f32 {
+    p.bands
+        .iter()
+        .map(|b| band_coeffs(b, fs).magnitude_db(fs, freq))
+        .sum()
+}
+
+/// A six-band parametric equaliser for stereo audio.
+pub struct ParamEq {
+    fs: f32,
+    applied: Option<ParamEqParams>,
+    coeffs: [Coeffs; BUS_EQ_BANDS],
+    state: [[BiquadState; BUS_EQ_BANDS]; 2],
+}
+
+impl ParamEq {
+    pub fn new(fs: f32) -> Self {
+        Self {
+            fs,
+            applied: None,
+            coeffs: [Coeffs::IDENTITY; BUS_EQ_BANDS],
+            state: [[BiquadState::default(); BUS_EQ_BANDS]; 2],
+        }
+    }
+
+    /// `buf` is interleaved stereo.
+    pub fn process(&mut self, p: &ParamEqParams, buf: &mut [f32]) {
+        if !p.enabled {
+            return;
+        }
+        if self.applied != Some(*p) {
+            for (c, b) in self.coeffs.iter_mut().zip(&p.bands) {
+                *c = band_coeffs(b, self.fs);
+            }
+            self.applied = Some(*p);
+        }
+        for frame in buf.chunks_exact_mut(2) {
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                let mut x = *sample;
+                for band in 0..BUS_EQ_BANDS {
+                    x = self.state[ch][band].tick(&self.coeffs[band], x);
+                }
+                *sample = x;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default)]

@@ -6,6 +6,7 @@ description = "A per-app and per-device audio mixer for Windows, with a Voicemee
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+nnnoiseless = { version = "0.5.2", default-features = false }
 ringbuf = "0.5.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -55,3 +56,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[profile.dev]
+# Smaller builds: full debug info for every dependency is gigabytes.
+debug = "line-tables-only"

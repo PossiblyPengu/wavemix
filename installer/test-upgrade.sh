@@ -7,6 +7,7 @@ set -e
 EXE=$(realpath "$1")
 HERE=$(dirname "$(realpath "$0")")
 WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
 export PATH=/usr/lib/wine:$PATH WINEPREFIX=$WORK/prefix WINEDEBUG=-all
 run() { timeout 150 xvfb-run -a wine "$@" 2>&1 | grep -v "X connection" || true; }
 P=$WINEPREFIX/drive_c/users/root/AppData/Local/Programs/wavemix

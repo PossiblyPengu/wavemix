@@ -2,6 +2,7 @@
 
 #[cfg(windows)]
 pub mod cpal_io;
+pub mod denoise;
 pub mod dsp;
 pub mod io;
 pub mod mixer;
