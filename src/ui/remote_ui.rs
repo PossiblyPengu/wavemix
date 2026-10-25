@@ -71,7 +71,7 @@ impl MixerApp {
             .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(5))
     }
 
-    fn handle_remote(&mut self, req: &Request) -> (u16, String) {
+    pub(super) fn handle_remote(&mut self, req: &Request) -> (u16, String) {
         let path: Vec<&str> = req.path.iter().map(String::as_str).collect();
         let q = &req.query;
         match path.as_slice() {
@@ -100,6 +100,25 @@ impl MixerApp {
                     return fail(400, "use on=1, on=0 or on=toggle");
                 };
                 p.duck.enabled = on;
+                self.commit_params(p);
+                ok()
+            }
+            ["api", "chatmix"] => {
+                let mut p = self.engine.params();
+                if let Some(on) = flag(q.get("on"), p.chatmix.enabled) {
+                    p.chatmix.enabled = on;
+                }
+                if let Some(v) = number(q.get("balance")) {
+                    p.chatmix.balance = v.clamp(-1.0, 1.0);
+                    // Turning the dial is a clear sign the person wants it on.
+                    if q.get("on").is_none() {
+                        p.chatmix.enabled = true;
+                    }
+                }
+                if let Some(v) = number(q.get("nudge")) {
+                    p.chatmix.balance = (p.chatmix.balance + v).clamp(-1.0, 1.0);
+                    p.chatmix.enabled = true;
+                }
                 self.commit_params(p);
                 ok()
             }
@@ -152,6 +171,12 @@ impl MixerApp {
                 if let Some(v) = flag(q.get("limiter"), bus.limiter) {
                     bus.limiter = v;
                 }
+                if let Some(v) = number(q.get("crossfeed")) {
+                    bus.crossfeed = v.clamp(0.0, 1.0);
+                }
+                if let Some(v) = number(q.get("width")) {
+                    bus.width = v.clamp(0.0, 2.0);
+                }
                 self.commit_params(p);
                 ok()
             }
@@ -182,6 +207,10 @@ impl MixerApp {
                 self.set_recording(on, bus);
                 ok()
             }
+            ["api", "macro"] => match q.get("name") {
+                Some(name) => self.run_macro(name),
+                None => fail(400, "give a name"),
+            },
             ["api", "key"] => self.remote_key(q.get("action").map(String::as_str).unwrap_or("")),
             _ => fail(404, "unknown request; see Settings > Remote control"),
         }
@@ -237,6 +266,7 @@ impl MixerApp {
                     "index": b, "id": bus_name(b), "name": self.config.bus_title(b),
                     "gain_db": p.gain_db, "mute": p.mute, "limiter": p.limiter,
                     "delay_ms": p.delay_ms, "eq": p.eq.enabled,
+                    "crossfeed": p.crossfeed, "width": p.width,
                 })
             })
             .collect();
@@ -249,10 +279,15 @@ impl MixerApp {
             "engine_on": self.engine.is_running(),
             "bypass_fx": params.bypass_fx,
             "ducking": params.duck.enabled,
+            "chatmix": {
+                "on": params.chatmix.enabled, "balance": params.chatmix.balance,
+                "game": params.chatmix.game, "chat": params.chatmix.chat,
+            },
             "recording": recording,
             "strips": strips,
             "buses": buses,
             "presets": self.config.presets.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+            "macros": self.config.macros.iter().map(|m| m.name.clone()).collect::<Vec<_>>(),
         })
     }
 }

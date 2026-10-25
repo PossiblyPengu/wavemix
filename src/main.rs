@@ -11,6 +11,8 @@ mod engine;
 mod hotkeys;
 #[cfg(windows)]
 mod instance;
+mod midi;
+mod midi_device;
 mod model;
 mod osd;
 mod preset;
@@ -151,13 +153,23 @@ fn main() -> eframe::Result {
     };
 
     // The mixing engine: real devices on Windows, simulated ones elsewhere and in --demo.
+    let vban: engine::vban::Shared =
+        std::sync::Arc::new(std::sync::Mutex::new(config.vban.clone()));
     let engine = engine::runtime::Engine::start(
-        move || -> Box<dyn engine::io::AudioIo> {
-            #[cfg(windows)]
-            if !demo {
-                return Box::new(engine::cpal_io::CpalIo::new());
+        {
+            let vban = vban.clone();
+            move || -> Box<dyn engine::io::AudioIo> {
+                #[cfg(windows)]
+                let devices: Box<dyn engine::io::AudioIo> = if demo {
+                    Box::new(engine::sim::SimIo::new())
+                } else {
+                    Box::new(engine::cpal_io::CpalIo::new())
+                };
+                #[cfg(not(windows))]
+                let devices: Box<dyn engine::io::AudioIo> = Box::new(engine::sim::SimIo::new());
+                // Other computers on the network appear next to the sound cards.
+                Box::new(engine::vban::VbanIo::new(devices, vban))
             }
-            Box::new(engine::sim::SimIo::new())
         },
         config.engine.io.clone(),
         config.engine.params.clone(),
@@ -186,7 +198,7 @@ fn main() -> eframe::Result {
                 unreachable!("demo is always set off Windows")
             };
             Ok(Box::new(MixerApp::new(
-                cc, handle, engine, config, demo, background,
+                cc, handle, engine, config, demo, background, vban,
             )))
         }),
     )

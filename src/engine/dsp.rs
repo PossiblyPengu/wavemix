@@ -421,6 +421,57 @@ impl Compressor {
 
 // --- limiter ------------------------------------------------------------------------------------
 
+/// Stereo width and headphone crossfeed. Crossfeed blends a softened, slightly late copy of each
+/// side into the other, the way two speakers reach both ears, so headphone music sits in front of
+/// you instead of inside your head.
+pub struct Spatial {
+    /// Coefficient of the one-pole low-pass on the fed-across signal (about 700 Hz).
+    lp_coef: f32,
+    lp: [f32; 2],
+    /// A few samples of delay, per side, as a small ring.
+    ring: [[f32; Spatial::DELAY]; 2],
+    pos: usize,
+}
+
+impl Spatial {
+    /// About 0.3 ms at 48 kHz, roughly the extra path to the far ear.
+    const DELAY: usize = 14;
+
+    pub fn new(fs: f32) -> Self {
+        Self {
+            lp_coef: 1.0 - (-2.0 * PI * 700.0 / fs).exp(),
+            lp: [0.0; 2],
+            ring: [[0.0; Self::DELAY]; 2],
+            pos: 0,
+        }
+    }
+
+    /// `buf` is interleaved stereo. `crossfeed` 0..=1, `width` 0 (mono) ..= 2 (wide).
+    pub fn process(&mut self, crossfeed: f32, width: f32, buf: &mut [f32]) {
+        let crossfeed = crossfeed.clamp(0.0, 1.0);
+        let width = width.clamp(0.0, 2.0);
+        if crossfeed < 0.001 && (width - 1.0).abs() < 0.001 {
+            return;
+        }
+        // Crossfeed adds low-frequency energy; take a little off the top to compensate.
+        let comp = 1.0 / (1.0 + crossfeed * 0.5);
+        for f in buf.chunks_exact_mut(2) {
+            // Width: scale what differs between the sides.
+            let (mid, side) = ((f[0] + f[1]) * 0.5, (f[0] - f[1]) * 0.5 * width);
+            let (l, r) = (mid + side, mid - side);
+            // Crossfeed: what each side said a moment ago, softened, goes to the other side.
+            let (dl, dr) = (self.ring[0][self.pos], self.ring[1][self.pos]);
+            self.ring[0][self.pos] = l;
+            self.ring[1][self.pos] = r;
+            self.pos = (self.pos + 1) % Self::DELAY;
+            self.lp[0] += self.lp_coef * (dl - self.lp[0]);
+            self.lp[1] += self.lp_coef * (dr - self.lp[1]);
+            f[0] = (l + crossfeed * self.lp[1]) * comp;
+            f[1] = (r + crossfeed * self.lp[0]) * comp;
+        }
+    }
+}
+
 /// Instant-attack peak limiter: it never lets a sample above the ceiling through, then recovers
 /// smoothly. Used on the output buses so summing several strips can't clip.
 pub struct Limiter {

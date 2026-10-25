@@ -11,3 +11,4 @@ pub mod rate;
 pub mod record;
 pub mod runtime;
 pub mod sim;
+pub mod vban;

@@ -185,6 +185,32 @@ impl Default for ParamEqParams {
     }
 }
 
+/// Game / chat balance: one dial that turns one strip down as it favours the other, like the
+/// ChatMix dial on a gaming headset. 0 is even, -1 is all game, +1 is all chat.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ChatMixParams {
+    pub enabled: bool,
+    pub balance: f32,
+    /// The strips on each side (0-based).
+    pub game: usize,
+    pub chat: usize,
+}
+
+impl Default for ChatMixParams {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            balance: 0.0,
+            game: HARDWARE_STRIPS + 1,
+            chat: HARDWARE_STRIPS,
+        }
+    }
+}
+
+/// How far (in dB) the dial turns the far side down when pushed all the way.
+pub const CHATMIX_RANGE_DB: f32 = 30.0;
+
 /// Ducking: when the `source` strip (a microphone) is loud, turn the virtual strips (music, game
 /// and chat from apps) down, and bring them back when it stops.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -261,6 +287,11 @@ pub struct BusParams {
     pub limiter_ceiling_db: f32,
     /// Equaliser across the whole output, before the limiter.
     pub eq: ParamEqParams,
+    /// Mix a little of each side into the other, as speakers do, so headphones sound less
+    /// "inside the head" (0 = off, 1 = a lot).
+    pub crossfeed: f32,
+    /// Stereo width: 0 is mono, 1 is as recorded, 2 is wider.
+    pub width: f32,
     /// Delay applied to the whole bus, in milliseconds, to line up outputs whose devices have
     /// different latencies (Bluetooth headphones against wired speakers).
     pub delay_ms: f32,
@@ -274,6 +305,8 @@ impl Default for BusParams {
             limiter: true,
             limiter_ceiling_db: -0.5,
             eq: ParamEqParams::default(),
+            crossfeed: 0.0,
+            width: 1.0,
             delay_ms: 0.0,
         }
     }
@@ -287,6 +320,7 @@ pub struct EngineParams {
     /// Skip every strip's gate, EQ and compressor, to hear what they are doing.
     pub bypass_fx: bool,
     pub duck: DuckParams,
+    pub chatmix: ChatMixParams,
 }
 
 impl Default for EngineParams {
@@ -296,6 +330,7 @@ impl Default for EngineParams {
             buses: [BusParams::default(); BUSES],
             bypass_fx: false,
             duck: DuckParams::default(),
+            chatmix: ChatMixParams::default(),
         }
     }
 }

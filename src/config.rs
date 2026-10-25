@@ -44,7 +44,25 @@ pub enum OsdPosition {
     Custom,
 }
 
-/// Global hotkeys, as strings like `ctrl+alt+up`. Empty means unbound.
+/// A named list of commands run together, one per line, written like the remote control's
+/// addresses: `strip/0?mute=1`, `engine?on=1`. Lines starting with `#` are notes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Macro {
+    pub name: String,
+    pub commands: String,
+}
+
+/// MIDI controllers: which inputs to listen to, and what each knob, fader and pad does.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MidiConfig {
+    pub enabled: bool,
+    /// One input's name; empty listens to every input.
+    pub device: String,
+    pub bindings: Vec<crate::midi::Binding>,
+}
+
 /// The local control interface (see `remote.rs`). Off unless switched on.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -206,6 +224,10 @@ pub struct Config {
     /// Look for new releases now and then.
     pub check_updates: bool,
     pub remote: RemoteConfig,
+    pub macros: Vec<Macro>,
+    pub midi: MidiConfig,
+    /// Audio to and from other computers.
+    pub vban: crate::engine::vban::VbanConfig,
     /// Which output bus the Record button captures.
     pub record_bus: usize,
     /// List idle background programs and services too, not only apps that are open or playing.
@@ -252,6 +274,9 @@ impl Default for Config {
             theme: ThemeMode::System,
             check_updates: true,
             remote: RemoteConfig::default(),
+            macros: Vec::new(),
+            midi: MidiConfig::default(),
+            vban: Default::default(),
             record_bus: 0,
             show_background_apps: false,
             ui_scale: 1.0,

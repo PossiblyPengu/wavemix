@@ -180,7 +180,7 @@ impl RateReader {
 
 /// Catmull-Rom cubic through `p1` (t = 0) and `p2` (t = 1), using `p0` and `p3` as neighbours.
 #[inline]
-fn hermite(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+pub(super) fn hermite(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
     p1 + 0.5
         * t
         * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))

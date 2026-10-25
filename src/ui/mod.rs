@@ -14,6 +14,7 @@ use crate::model::{group_apps, AppStrip, Command, Flow, IconData, Snapshot};
 
 mod compact;
 mod console;
+mod controls;
 mod diagnostics;
 mod remote_ui;
 mod settings;
@@ -62,6 +63,17 @@ pub struct MixerApp {
     remote: Option<crate::remote::Remote>,
     remote_error: Option<String>,
     remote_failed_at: Option<std::time::Instant>,
+    /// MIDI controllers: the open inputs, what they last said, and the binding waiting to learn.
+    midi: Option<crate::midi_device::Inputs>,
+    midi_mapper: crate::midi::Mapper,
+    midi_scanned: std::time::Instant,
+    midi_ports: Vec<String>,
+    midi_last: Option<(crate::midi::Event, std::time::Instant)>,
+    midi_learning: Option<usize>,
+    /// Network audio endpoints, shared with the engine's device thread.
+    vban: crate::engine::vban::Shared,
+    /// What the last macro run said, shown beside the Macros menu.
+    macro_note: Option<String>,
     /// The last thing the recorder wants to say (where it saved, or why it couldn't start).
     recording_note: Option<String>,
     /// Output bus whose equaliser editor is open, and the band selected in it.
@@ -141,6 +153,7 @@ impl MixerApp {
         config: Config,
         demo: bool,
         background: bool,
+        vban: crate::engine::vban::Shared,
     ) -> Self {
         cc.egui_ctx.set_zoom_factor(config.ui_scale.clamp(0.8, 1.6));
         theme::set_dark(theme::wants_dark(config.theme));
@@ -185,6 +198,14 @@ impl MixerApp {
             remote: None,
             remote_error: None,
             remote_failed_at: None,
+            midi: None,
+            midi_mapper: Default::default(),
+            midi_scanned: std::time::Instant::now(),
+            midi_ports: Vec::new(),
+            midi_last: None,
+            midi_learning: None,
+            vban,
+            macro_note: None,
             recording_note: None,
             // `--editor buseq` opens output A1's equaliser on launch.
             bus_editing: std::env::args()
@@ -673,6 +694,7 @@ impl eframe::App for MixerApp {
         self.drive_updates(ctx);
         self.drive_preset_triggers();
         self.drive_remote(ctx);
+        self.drive_midi(ctx);
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]

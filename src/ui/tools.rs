@@ -5,7 +5,7 @@ use eframe::egui::{self, pos2, vec2, Align, Color32, Layout, RichText, Sense, St
 use super::console::{db_to_y, hz_to_x, x_to_hz, y_to_db, EQ_DB_RANGE};
 use super::{strip, theme, MixerApp};
 use crate::engine::dsp::param_eq_response_db;
-use crate::engine::params::{BandKind, ParamEqParams, BUS_EQ_BANDS, HARDWARE_STRIPS};
+use crate::engine::params::{BandKind, ParamEqParams, BUS_EQ_BANDS, HARDWARE_STRIPS, STRIPS};
 use crate::engine::runtime::ENGINE_RATE;
 
 /// Where a band's handle sits: its frequency, and its gain (filters that only cut sit on 0 dB).
@@ -185,6 +185,41 @@ fn bus_eq_editor(ui: &mut Ui, p: &mut ParamEqParams, selected: &mut usize, accen
     });
 }
 
+/// Headphone crossfeed and stereo width, for one output.
+fn spatial_controls(ui: &mut Ui, p: &mut crate::engine::params::BusParams) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Stereo").strong());
+        ui.label(
+            RichText::new("Crossfeed makes headphones sound less inside the head; width narrows or widens the picture.")
+                .size(11.0)
+                .color(theme::TEXT_DIM()),
+        );
+        if ui.small_button("Reset").clicked() {
+            p.crossfeed = 0.0;
+            p.width = 1.0;
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::Slider::new(&mut p.crossfeed, 0.0..=1.0)
+                .custom_formatter(|v, _| {
+                    if v < 0.005 {
+                        "off".to_string()
+                    } else {
+                        format!("{:.0}%", v * 100.0)
+                    }
+                })
+                .text("Crossfeed"),
+        );
+        ui.add_space(12.0);
+        ui.add(
+            egui::Slider::new(&mut p.width, 0.0..=2.0)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                .text("Width"),
+        );
+    });
+}
+
 impl MixerApp {
     /// The editor panel for one output bus's equaliser.
     pub(super) fn bus_editor(
@@ -217,7 +252,54 @@ impl MixerApp {
                 let mut band = self.eq_band;
                 bus_eq_editor(ui, &mut p.eq, &mut band, accent);
                 self.eq_band = band;
+                ui.add_space(8.0);
+                ui.separator();
+                spatial_controls(ui, p);
             });
+    }
+
+    /// The "ChatMix" button in the engine bar: one dial that trades game sound for chat sound.
+    pub(super) fn chatmix_button(&mut self, ui: &mut Ui) {
+        let mut params = self.engine.params();
+        let on = params.chatmix.enabled;
+        let resp = strip::toggle(ui, "ChatMix", on, vec2(82.0, 30.0), theme::ACCENT())
+            .on_hover_text("One dial that turns game sound down as you favour chat, and back");
+        let before = params.chatmix;
+        egui::Popup::menu(&resp).show(|ui| {
+            ui.set_min_width(300.0);
+            ui.checkbox(&mut params.chatmix.enabled, "Balance game and chat");
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label("Game is");
+                strip_picker(ui, "chatmix-game", &mut params.chatmix.game, &self.config);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Chat is");
+                strip_picker(ui, "chatmix-chat", &mut params.chatmix.chat, &self.config);
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Game").size(11.0).color(theme::TEXT_DIM()));
+                ui.spacing_mut().slider_width = 170.0;
+                ui.add(
+                    egui::Slider::new(&mut params.chatmix.balance, -1.0..=1.0).show_value(false),
+                );
+                ui.label(RichText::new("Chat").size(11.0).color(theme::TEXT_DIM()));
+                if ui.small_button("Centre").clicked() {
+                    params.chatmix.balance = 0.0;
+                }
+            });
+            if params.chatmix.game == params.chatmix.chat {
+                ui.label(
+                    RichText::new("Pick two different inputs.")
+                        .size(11.0)
+                        .color(theme::NOTE_TEXT()),
+                );
+            }
+        });
+        if params.chatmix != before {
+            self.commit_params(params);
+        }
     }
 
     /// The "Ducking" button in the engine bar, with its settings in a menu.
@@ -267,6 +349,17 @@ impl MixerApp {
             self.commit_params(params);
         }
     }
+}
+
+/// A drop-down that picks one of the mixer's input strips.
+fn strip_picker(ui: &mut Ui, id: &str, value: &mut usize, config: &crate::config::Config) {
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(config.strip_title(*value))
+        .show_ui(ui, |ui| {
+            for i in 0..STRIPS {
+                ui.selectable_value(value, i, config.strip_title(i));
+            }
+        });
 }
 
 /// "2026-10-25 14-03-07", from the local clock.

@@ -315,7 +315,9 @@ impl MixerApp {
                     }
                     if running {
                         self.duck_button(ui);
+                        self.chatmix_button(ui);
                         self.record_button(ui);
+                        self.macros_menu(ui);
                     }
                     if running {
                         let mut p = self.engine.params();

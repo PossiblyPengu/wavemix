@@ -53,12 +53,17 @@ fn percent_decode(s: &str) -> String {
     while i < bytes.len() {
         match bytes[i] {
             b'+' => out.push(b' '),
-            b'%' if i + 2 < bytes.len() => match u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                Ok(b) => {
+            // Slice the bytes, not the string: a multi-byte character after the % would make a
+            // string slice panic, and a request from anywhere on this PC must never crash the app.
+            b'%' if i + 2 < bytes.len() => match std::str::from_utf8(&bytes[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
+                Some(b) => {
                     out.push(b);
                     i += 2;
                 }
-                Err(_) => out.push(b'%'),
+                None => out.push(b'%'),
             },
             b => out.push(b),
         }
@@ -106,6 +111,18 @@ pub fn parse_request(text: &str) -> Option<Request> {
         query,
         token,
     })
+}
+
+/// One line of a macro or a MIDI binding, written like a web address: `strip/0?gain_db=-6`,
+/// `/api/engine?on=toggle`. Blank lines and lines starting with `#` are not commands.
+pub fn request_from_line(line: &str) -> Option<Request> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let line = line.trim_start_matches('/');
+    let line = line.strip_prefix("api/").unwrap_or(line);
+    parse_request(&format!("GET /api/{line} HTTP/1.1\r\n\r\n"))
 }
 
 /// Compare two secrets without stopping at the first difference.
@@ -253,6 +270,21 @@ mod tests {
     }
 
     #[test]
+    fn macro_lines_become_requests() {
+        let r = request_from_line("strip/0?gain_db=-6&mute=toggle").unwrap();
+        assert_eq!(r.path, ["api", "strip", "0"]);
+        assert_eq!(r.query.get("gain_db").map(String::as_str), Some("-6"));
+        assert_eq!(
+            request_from_line("/api/engine?on=1").unwrap().path,
+            ["api", "engine"]
+        );
+        assert_eq!(request_from_line("api/duck").unwrap().path, ["api", "duck"]);
+        assert!(request_from_line("").is_none());
+        assert!(request_from_line("   ").is_none());
+        assert!(request_from_line("# a note to myself").is_none());
+    }
+
+    #[test]
     fn a_bearer_header_works_too() {
         let r = parse_request("POST /api/engine HTTP/1.1\r\nAuthorization: Bearer s3cret\r\n\r\n")
             .unwrap();
@@ -265,6 +297,15 @@ mod tests {
     fn percent_escapes_and_plus_are_decoded() {
         let r = parse_request("GET /api/preset?name=Late%20night+mix%21 HTTP/1.1\r\n\r\n").unwrap();
         assert_eq!(r.query["name"], "Late night mix!");
+    }
+
+    #[test]
+    fn a_stray_percent_before_a_wide_character_does_not_panic() {
+        assert_eq!(percent_decode("%aé"), "%aé");
+        assert_eq!(percent_decode("100%é"), "100%é");
+        assert_eq!(percent_decode("%"), "%");
+        assert_eq!(percent_decode("%4"), "%4");
+        assert_eq!(percent_decode("%41"), "A");
     }
 
     #[test]

@@ -411,10 +411,14 @@ impl MixerApp {
                 ui,
                 "Addresses: /api/state, /api/strip/0?gain_db=-6&mute=toggle, /api/bus/0?gain_db=0, \
                  /api/engine?on=1, /api/duck?on=toggle, /api/bypass?on=1, /api/preset?name=..., \
-                 /api/record?on=toggle, /api/key?action=volume_up. Add &token=... or send \
+                 /api/record?on=toggle, /api/chatmix?balance=-0.5, /api/macro?name=..., /api/key?action=volume_up. Add &token=... or send \
                  Authorization: Bearer ...",
             );
         }
+
+        self.macros_section(ui);
+        self.midi_section(ui);
+        self.vban_section(ui);
 
         section(ui, "Help");
         hint(
@@ -696,7 +700,7 @@ fn open_sound_settings() {
     }
 }
 
-fn section(ui: &mut Ui, title: &str) {
+pub(super) fn section(ui: &mut Ui, title: &str) {
     ui.add_space(16.0);
     ui.label(RichText::new(title).size(15.0).strong());
     ui.add_space(2.0);
@@ -704,7 +708,7 @@ fn section(ui: &mut Ui, title: &str) {
     ui.add_space(4.0);
 }
 
-fn hint(ui: &mut Ui, text: &str) {
+pub(super) fn hint(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(11.5).color(theme::TEXT_DIM()));
 }
 

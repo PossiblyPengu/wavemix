@@ -86,6 +86,19 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
   (a small neural network trained on speech, for microphones); each output has a **six-band
   parametric EQ**, a limiter and a delay. **Ducking** turns app sound down while you talk.
   **Bypass FX** skips every gate, EQ and compressor so you can hear what they do.
+- **Game / chat dial** (ChatMix): one dial that turns the game strip down as you favour chat, and
+  back, like a gaming headset's. **Crossfeed** (so headphones sound less inside the head) and
+  **stereo width** are in each output's EQ editor.
+- **Macros**: name a list of commands (one per line, written like the remote addresses) and run it
+  from the Macros button, a MIDI pad, or `/api/macro?name=...`.
+- **MIDI control**: faders, knobs and pads (including motorised faders that report pitch bend)
+  drive input and output volume, pan, mute, solo, the game / chat dial, ducking, recording,
+  macros and presets. Add a binding, then move the control (MIDI learn). Controllers plugged in
+  later are picked up automatically.
+- **Network audio (VBAN)**: send an output to another PC, or use another PC's sound as an input,
+  over your network. Compatible with Voicemeeter and VB-Audio's VBAN programs; each endpoint
+  appears in the device menus. Plain PCM audio, any common rate (converted to 48 kHz), mono or
+  surround sources use their front pair.
 - **Recording**: record any output to a 24-bit WAV in `Music\Wavemix`.
 - **Remote control**: an optional local web interface (off by default, this PC only, secret token)
   so a Stream Deck or script can change volumes, presets, ducking, recording and the keyboard
@@ -95,9 +108,9 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
 
 Wavemix runs in Windows' shared audio mode through a virtual cable, so it can't match Voicemeeter's
 ASIO / exclusive-mode latency, and it ships no virtual-device driver of its own (install VB-Cable).
-Also missing: VST plug-ins, surround or multi-channel inputs, MIDI control, a spatial-audio
-effect, and a code-signed installer (the release workflow signs automatically once a certificate
-is added as a repository secret).
+Also missing: VST plug-ins, surround or multi-channel sound cards (only the front pair of a
+device is used), and a code-signed installer (the release workflow signs automatically once a
+certificate is added as a repository secret).
 
 ## Switching from Voicemeeter
 

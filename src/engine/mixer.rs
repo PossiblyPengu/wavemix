@@ -4,8 +4,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::denoise::Denoiser;
-use super::dsp::{db_to_gain, gain_to_db, Compressor, Eq, Gate, Limiter, ParamEq};
-use super::params::{EngineParams, StripParams, BUSES, HARDWARE_STRIPS, STRIPS};
+use super::dsp::{db_to_gain, gain_to_db, Compressor, Eq, Gate, Limiter, ParamEq, Spatial};
+use super::params::{EngineParams, StripParams, BUSES, CHATMIX_RANGE_DB, HARDWARE_STRIPS, STRIPS};
 
 /// Meters the audio thread publishes and the UI reads. Peak values are linear amplitude, stored
 /// as `f32` bits in atomics so neither side ever waits on the other.
@@ -58,6 +58,7 @@ struct StripDsp {
 
 struct BusDsp {
     eq: ParamEq,
+    spatial: Spatial,
     limiter: Limiter,
     gain: f32,
     delay: DelayLine,
@@ -130,6 +131,7 @@ impl Mixer {
             buses: (0..BUSES)
                 .map(|_| BusDsp {
                     eq: ParamEq::new(sample_rate),
+                    spatial: Spatial::new(sample_rate),
                     limiter: Limiter::new(sample_rate),
                     gain: 0.0,
                     delay: DelayLine::new(sample_rate),
@@ -177,6 +179,15 @@ impl Mixer {
             }
             let silenced = p.mute || (any_solo && !p.solo);
             let mut target = if silenced { 0.0 } else { db_to_gain(p.gain_db) };
+            // The game / chat dial turns the side it isn't favouring down.
+            if params.chatmix.enabled {
+                let b = params.chatmix.balance.clamp(-1.0, 1.0);
+                if i == params.chatmix.game {
+                    target *= db_to_gain(-b.max(0.0) * CHATMIX_RANGE_DB);
+                } else if i == params.chatmix.chat {
+                    target *= db_to_gain(b.min(0.0) * CHATMIX_RANGE_DB);
+                }
+            }
             // Ducking turns the app strips down while the voice strip is talking.
             if i >= HARDWARE_STRIPS && params.duck.enabled {
                 target *= db_to_gain(self.duck_db);
@@ -223,6 +234,7 @@ impl Mixer {
             let target = if p.mute { 0.0 } else { db_to_gain(p.gain_db) };
             ramp_gain(buf, &mut dsp.gain, target);
             dsp.eq.process(&p.eq, buf);
+            dsp.spatial.process(p.crossfeed, p.width, buf);
             if p.limiter {
                 dsp.limiter.process(p.limiter_ceiling_db, buf);
             }
@@ -368,6 +380,54 @@ mod tests {
         let ducked = rms_after(&params, &[(HARDWARE_STRIPS, 0.2), (0, 0.5)], 150);
         let drop_db = 20.0 * (app_only / ducked).log10();
         assert!((drop_db - 12.0).abs() < 1.5, "dropped {drop_db} dB");
+    }
+
+    #[test]
+    fn the_game_chat_dial_turns_the_other_side_down() {
+        let mut params = EngineParams::default();
+        // Strips 3 (chat) and 4 (game) both feed A1 with the same tone.
+        for i in [3, 4] {
+            params.strips[i].sends = [true, false, false, false, false];
+        }
+        params.strips[0].sends = [false; BUSES];
+        let both = |p: &EngineParams| rms_after(p, &[(3, 0.1), (4, 0.1)], 30);
+        let even = both(&params);
+        params.chatmix.enabled = true;
+        params.chatmix.balance = 0.0;
+        assert!(
+            (both(&params) - even).abs() / even < 0.01,
+            "an even dial changed the mix"
+        );
+        // All the way to chat: the game strip is 30 dB down, so the sum is just the chat strip.
+        params.chatmix.balance = 1.0;
+        let chat_only = rms_after(&params, &[(3, 0.1)], 30);
+        let with_game = both(&params);
+        assert!(
+            (with_game - chat_only).abs() / chat_only < 0.05,
+            "{with_game} vs {chat_only}"
+        );
+    }
+
+    #[test]
+    fn width_zero_makes_mono_and_crossfeed_leaks_across() {
+        let mut sp = super::super::dsp::Spatial::new(48_000.0);
+        // Left only.
+        let mut buf: Vec<f32> = (0..960)
+            .flat_map(|i| [(i as f32 * 0.05).sin(), 0.0])
+            .collect();
+        let mut mono = buf.clone();
+        sp.process(0.0, 0.0, &mut mono);
+        assert!(mono.chunks_exact(2).all(|f| (f[0] - f[1]).abs() < 1e-6));
+        let mut sp = super::super::dsp::Spatial::new(48_000.0);
+        sp.process(1.0, 1.0, &mut buf);
+        let right: f32 = buf.chunks_exact(2).map(|f| f[1].abs()).sum();
+        assert!(right > 1.0, "nothing crossed to the right side");
+        // Off and unchanged width is a no-op.
+        let mut sp = super::super::dsp::Spatial::new(48_000.0);
+        let mut same = vec![0.3f32, -0.2, 0.1, 0.4];
+        let before = same.clone();
+        sp.process(0.0, 1.0, &mut same);
+        assert_eq!(same, before);
     }
 
     #[test]
