@@ -60,7 +60,11 @@ impl MixerApp {
         let _ = writeln!(
             out,
             "\nEngine: {}   latency setting {} ms   CPU {:.0}%   late blocks {}",
-            if self.engine.is_running() { "on" } else { "off" },
+            if self.engine.is_running() {
+                "on"
+            } else {
+                "off"
+            },
             self.config.engine.latency_ms,
             stats.cpu_percent,
             stats.late_blocks
@@ -90,8 +94,16 @@ impl MixerApp {
         let _ = writeln!(
             out,
             "\nRouting: Windows sound {}   cable playback side {}   restore-to {:?}",
-            if routed { "goes through Wavemix" } else { "plays directly" },
-            if cable.is_some() { "found" } else { "NOT found" },
+            if routed {
+                "goes through Wavemix"
+            } else {
+                "plays directly"
+            },
+            if cable.is_some() {
+                "found"
+            } else {
+                "NOT found"
+            },
             self.config.restore_playback
         );
 
@@ -127,7 +139,10 @@ impl MixerApp {
         let _ = writeln!(
             out,
             "\nHotkeys: {:?}\nPresets: {}   Names given: {}",
-            self.config.hotkeys.entries().map(|(l, k)| format!("{l}={k}")),
+            self.config
+                .hotkeys
+                .entries()
+                .map(|(l, k)| format!("{l}={k}")),
             self.config.presets.len(),
             self.config.device_names.len()
         );
@@ -137,7 +152,14 @@ impl MixerApp {
             .and_then(|p| std::fs::read_to_string(p).ok())
         {
             let _ = writeln!(out, "\nWindows volume popup log:");
-            for line in log.lines().rev().take(30).collect::<Vec<_>>().into_iter().rev() {
+            for line in log
+                .lines()
+                .rev()
+                .take(30)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+            {
                 let _ = writeln!(out, "  {line}");
             }
         }

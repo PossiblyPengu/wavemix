@@ -319,7 +319,8 @@ mod tests {
         for _ in 0..blocks {
             for &(strip, amp) in loud {
                 for (n, f) in ins[strip].chunks_exact_mut(2).enumerate() {
-                    let v = amp * (2.0 * std::f32::consts::PI * 1000.0 * (t + n) as f32 / 48_000.0).sin();
+                    let v = amp
+                        * (2.0 * std::f32::consts::PI * 1000.0 * (t + n) as f32 / 48_000.0).sin();
                     f[0] = v;
                     f[1] = v;
                 }
@@ -359,7 +360,10 @@ mod tests {
         params.duck.threshold_db = -40.0;
         // Voice quiet: nothing ducks.
         let quiet = rms_after(&params, &[(HARDWARE_STRIPS, 0.2), (0, 0.001)], 150);
-        assert!((quiet - app_only).abs() / app_only < 0.05, "ducked with no voice");
+        assert!(
+            (quiet - app_only).abs() / app_only < 0.05,
+            "ducked with no voice"
+        );
         // Voice loud: the app drops by about the set amount.
         let ducked = rms_after(&params, &[(HARDWARE_STRIPS, 0.2), (0, 0.5)], 150);
         let drop_db = 20.0 * (app_only / ducked).log10();

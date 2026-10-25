@@ -20,6 +20,7 @@ pub enum EditorTab {
     Eq,
     Gate,
     Comp,
+    Denoise,
 }
 
 /// Latency presets, in milliseconds per device link.
@@ -31,7 +32,7 @@ const LATENCY_CHOICES: [(&str, u32); 4] = [
 ];
 
 /// Bus colours: hardware outputs (A) in terracotta, virtual ones (B) in green.
-fn bus_colors() -> [Color32; BUSES] {
+pub(super) fn bus_colors() -> [Color32; BUSES] {
     [
         theme::ACCENT_OUT(),
         theme::ACCENT_OUT(),
@@ -224,6 +225,10 @@ impl MixerApp {
                 } else {
                     self.editor_strip = None;
                 }
+                if let Some(b) = self.bus_editing {
+                    ui.add_space(10.0);
+                    self.bus_editor(ui, b, &mut params.buses[b]);
+                }
             });
 
         if params != before {
@@ -302,6 +307,9 @@ impl MixerApp {
                     if running {
                         ui.add_space(8.0);
                         self.route_control(ui);
+                    }
+                    if running {
+                        self.duck_button(ui);
                     }
                     if running {
                         let mut p = self.engine.params();
@@ -734,7 +742,7 @@ impl MixerApp {
         self.engine_dirty_at = Some(Instant::now());
     }
 
-    fn commit_params(&mut self, params: EngineParams) {
+    pub(super) fn commit_params(&mut self, params: EngineParams) {
         self.engine.set_params(params.clone());
         self.config.engine.params = params;
         self.mark_engine_dirty();
@@ -1077,13 +1085,14 @@ impl MixerApp {
             });
 
             // EQ, gate and compressor share one editor with tabs.
-            let working = p.eq.enabled || p.gate.enabled || p.comp.enabled;
+            let working = p.eq.enabled || p.gate.enabled || p.comp.enabled || p.denoise;
             let open = matches!(self.editing, Some((n, _)) if n == i);
             if strip::process_button(ui, "Tune", working, open, vec2(CONSOLE_STRIP_W, 28.0))
                 .on_hover_text("EQ, noise gate and compressor")
                 .clicked()
             {
                 self.editing = if open { None } else { Some((i, EditorTab::Eq)) };
+                self.bus_editing = None;
             }
         });
     }
@@ -1214,8 +1223,15 @@ impl MixerApp {
                         .suffix(" ms"),
                 );
             });
-            // Inputs have a Tune button here; keep the bottoms of both panels level.
-            ui.add_space(28.0);
+            // The bus equaliser; also keeps the bottoms of both panels level.
+            let open = self.bus_editing == Some(b);
+            if strip::process_button(ui, "EQ", p.eq.enabled, open, vec2(CONSOLE_STRIP_W, 28.0))
+                .on_hover_text("Six-band equalizer for this whole output")
+                .clicked()
+            {
+                self.bus_editing = if open { None } else { Some(b) };
+                self.editing = None;
+            }
         });
     }
 
@@ -1239,6 +1255,7 @@ impl MixerApp {
                         (EditorTab::Eq, "Equalizer"),
                         (EditorTab::Gate, "Noise gate"),
                         (EditorTab::Comp, "Compressor"),
+                        (EditorTab::Denoise, "Noise removal"),
                     ] {
                         if ui.selectable_label(tab == t, label).clicked() {
                             self.editing = Some((i, t));
@@ -1261,6 +1278,7 @@ impl MixerApp {
                         let gr = self.engine.levels().comp_gain_reduction_db(i);
                         comp_editor(ui, p, gr);
                     }
+                    EditorTab::Denoise => denoise_editor(ui, p),
                 }
             });
     }
@@ -1268,25 +1286,25 @@ impl MixerApp {
 
 // --- editors -----------------------------------------------------------------------------------
 
-const EQ_DB_RANGE: f32 = 18.0;
+pub(super) const EQ_DB_RANGE: f32 = 18.0;
 const EQ_MIN_HZ: f32 = 20.0;
 const EQ_MAX_HZ: f32 = 20_000.0;
 
-fn hz_to_x(rect: egui::Rect, hz: f32) -> f32 {
+pub(super) fn hz_to_x(rect: egui::Rect, hz: f32) -> f32 {
     let t = (hz.clamp(EQ_MIN_HZ, EQ_MAX_HZ) / EQ_MIN_HZ).ln() / (EQ_MAX_HZ / EQ_MIN_HZ).ln();
     rect.left() + rect.width() * t
 }
 
-fn x_to_hz(rect: egui::Rect, x: f32) -> f32 {
+pub(super) fn x_to_hz(rect: egui::Rect, x: f32) -> f32 {
     let t = ((x - rect.left()) / rect.width()).clamp(0.0, 1.0);
     EQ_MIN_HZ * (EQ_MAX_HZ / EQ_MIN_HZ).powf(t)
 }
 
-fn db_to_y(rect: egui::Rect, db: f32) -> f32 {
+pub(super) fn db_to_y(rect: egui::Rect, db: f32) -> f32 {
     rect.center().y - db.clamp(-EQ_DB_RANGE, EQ_DB_RANGE) / EQ_DB_RANGE * rect.height() / 2.0
 }
 
-fn y_to_db(rect: egui::Rect, y: f32) -> f32 {
+pub(super) fn y_to_db(rect: egui::Rect, y: f32) -> f32 {
     ((rect.center().y - y) / (rect.height() / 2.0) * EQ_DB_RANGE).clamp(-EQ_DB_RANGE, EQ_DB_RANGE)
 }
 
@@ -1490,6 +1508,19 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
             ui.label("");
             ui.end_row();
         });
+}
+
+fn denoise_editor(ui: &mut Ui, p: &mut StripParams) {
+    ui.checkbox(&mut p.denoise, "Remove background noise");
+    ui.label(
+        RichText::new(
+            "A small neural network trained on speech takes out hiss, fans, keyboard clatter and \
+             room noise and keeps the voice. Made for microphones; it works on one channel (a \
+             stereo input is mixed to mono first) and adds about 10 ms of delay.",
+        )
+        .size(12.0)
+        .color(theme::TEXT_DIM()),
+    );
 }
 
 fn gate_editor(ui: &mut Ui, p: &mut StripParams, open: bool) {

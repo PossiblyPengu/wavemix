@@ -21,6 +21,7 @@ mod shell;
 mod strip;
 mod switch;
 mod theme;
+mod tools;
 mod updates;
 
 use strip::StripOutput;
@@ -56,6 +57,9 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// Output bus whose equaliser editor is open, and the band selected in it.
+    bus_editing: Option<usize>,
+    eq_band: usize,
     /// Result of the last "save diagnostics" click, shown in Settings.
     diagnostics_note: Option<String>,
     /// What was playing and which device was default last time presets' triggers were checked.
@@ -171,6 +175,13 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            // `--editor buseq` opens output A1's equaliser on launch.
+            bus_editing: std::env::args()
+                .skip_while(|a| a != "--editor")
+                .nth(1)
+                .filter(|t| t == "buseq")
+                .map(|_| 0),
+            eq_band: 0,
             diagnostics_note: None,
             last_activity: None,
             click_until: None,
@@ -678,7 +689,10 @@ impl eframe::App for MixerApp {
                 // One notice at a time: an update comes first, and nothing crowds the editor.
                 if self.update_banner_wanted() {
                     self.update_banner(ui);
-                } else if self.offer_switch() && self.editing.is_none() {
+                } else if self.offer_switch()
+                    && self.editing.is_none()
+                    && self.bus_editing.is_none()
+                {
                     self.switch_banner(ui);
                 }
                 // Each page eases in: a short fade and rise whenever the view changes.
