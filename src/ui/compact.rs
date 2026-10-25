@@ -324,11 +324,14 @@ fn paint_h_slider(
     );
 
     let knob = pos2(knob_x, track.center().y);
+    // The knob swells slightly while the pointer is over the slider.
+    let swell = strip::anim(ui, id.with("swell"), ui.rect_contains_pointer(rect), 0.14);
+    let r = 9.0 + swell * 1.5;
     p.circle_filled(
         pos2(knob.x, knob.y + 1.5),
-        9.5,
+        r + 0.5,
         theme::shadow_color(55),
     );
-    p.circle_filled(knob, 9.0, theme::CARD());
-    p.circle_stroke(knob, 9.0, egui::Stroke::new(2.0, color));
+    p.circle_filled(knob, r, theme::CARD());
+    p.circle_stroke(knob, r, egui::Stroke::new(2.0, color));
 }

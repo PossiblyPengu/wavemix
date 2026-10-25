@@ -172,8 +172,21 @@ impl MixerApp {
                     );
                 });
                 if let Some((i, tab)) = self.editing {
-                    ui.add_space(10.0);
+                    // The editor eases in when it opens or moves to another strip.
+                    if self.editor_strip != Some(i) {
+                        self.editor_strip = Some(i);
+                        self.editor_since = Instant::now();
+                    }
+                    let t = (self.editor_since.elapsed().as_secs_f32() / 0.2).min(1.0);
+                    let t = t * t * (3.0 - 2.0 * t);
+                    if t < 1.0 {
+                        ui.ctx().request_repaint();
+                    }
+                    ui.add_space(10.0 + (1.0 - t) * 12.0);
+                    ui.set_opacity(t);
                     self.editor(ui, i, tab, &mut params.strips[i]);
+                } else {
+                    self.editor_strip = None;
                 }
             });
 

@@ -370,6 +370,8 @@ impl MixerApp {
     /// Simple mode: borderless, no taskbar button, rising out of the taskbar by the tray icon.
     fn show_flyout(&mut self, ctx: &egui::Context, win: &Window) {
         self.mode = Mode::Flyout;
+        // Replay the content's fade-in each time the flyout rises.
+        self.page_since = Instant::now();
         let anchor = self.shell.tray.as_ref().and_then(|t| t.center());
         let mon = match anchor {
             Some((x, y)) => MonitorInfo::at(x, y),

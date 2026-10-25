@@ -24,6 +24,8 @@ mod theme;
 use strip::StripOutput;
 
 /// Pro mode: the full console.
+/// How long a page takes to ease in.
+const PAGE_FADE_S: f32 = 0.22;
 const PRO_SIZE: [f32; 2] = [1424.0, 860.0];
 /// Simple mode: a small volume control.
 const SIMPLE_SIZE: [f32; 2] = [370.0, 560.0];
@@ -49,6 +51,13 @@ pub struct MixerApp {
     names_migrated: bool,
     /// The theme setting changed; apply it on the next frame.
     theme_dirty: bool,
+    /// The page being shown (view, wizard open, settings open) and when it appeared, for its
+    /// fade-in.
+    shown_page: (View, bool, bool),
+    page_since: std::time::Instant,
+    /// The strip whose editor is open and when it opened, for the editor's fade-in.
+    editor_strip: Option<usize>,
+    editor_since: std::time::Instant,
     /// The window frame (title bar) theme last sent to the OS.
     frame_dark: Option<bool>,
     /// When the theme was last compared with the setting (and Windows).
@@ -142,6 +151,10 @@ impl MixerApp {
             route_checked: false,
             names_migrated: false,
             theme_dirty: false,
+            shown_page: (View::Compact, false, false),
+            page_since: std::time::Instant::now(),
+            editor_strip: None,
+            editor_since: std::time::Instant::now(),
             frame_dark: None,
             theme_checked: std::time::Instant::now(),
             auto_routed: false,
@@ -590,6 +603,20 @@ impl eframe::App for MixerApp {
                 if self.offer_switch() {
                     self.switch_banner(ui);
                 }
+                // Each page eases in: a short fade and rise whenever the view changes.
+                let page = (self.view(), self.switch.open, self.show_settings);
+                if page != self.shown_page {
+                    self.shown_page = page;
+                    self.page_since = std::time::Instant::now();
+                }
+                let t = (self.page_since.elapsed().as_secs_f32() / PAGE_FADE_S).min(1.0);
+                let t = t * t * (3.0 - 2.0 * t);
+                if t < 1.0 {
+                    ui.ctx().request_repaint();
+                }
+                ui.scope(|ui| {
+                ui.set_opacity(t);
+                ui.add_space((1.0 - t) * 10.0);
                 match self.view() {
                     View::Console if self.config.pro_apps_panel => {
                         let avail = ui.available_size();
@@ -610,6 +637,7 @@ impl eframe::App for MixerApp {
                     View::Compact if self.show_settings => self.settings_inline(ui),
                     View::Compact => self.compact(ui, &snap),
                 }
+                });
             });
         // Esc closes the taskbar flyout, as it does any popup.
         #[cfg(windows)]

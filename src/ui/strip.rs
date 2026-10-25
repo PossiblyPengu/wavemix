@@ -11,6 +11,22 @@ use crate::model::amp_to_db;
 
 /// Fraction of full scale the peak marker falls per second.
 const PEAK_FALL_PER_SEC: f32 = 0.35;
+/// Seconds for a meter bar to fall most of the way after a loud moment (it rises instantly).
+const METER_RELEASE_S: f32 = 0.22;
+
+// --- motion -----------------------------------------------------------------------------------
+
+/// 0.0 -> 1.0 as `on` becomes true (and back), eased over `secs`. Keeps the UI repainting while
+/// it moves.
+pub fn anim(ui: &Ui, id: Id, on: bool, secs: f32) -> f32 {
+    let t = ui.ctx().animate_bool_with_time(id, on, secs);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Blend two colours by `t`.
+pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    a.lerp_to_gamma(b, t.clamp(0.0, 1.0))
+}
 
 #[derive(Default)]
 pub struct StripOutput {
@@ -108,14 +124,11 @@ pub fn speaker_icon(painter: &Painter, center: Pos2, size: f32, muted: bool, col
 /// A mute toggle: a red filled pill with a crossed speaker when muted, a quiet one otherwise.
 pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    let fill = if muted {
-        theme::MUTE()
-    } else if resp.hovered() {
-        theme::HOVER()
-    } else {
-        theme::PANEL_HI()
-    };
-    let fg = if muted { Color32::WHITE } else { theme::TEXT_DIM() };
+    let hover = anim(ui, resp.id.with("h"), resp.hovered(), 0.12);
+    let on = anim(ui, resp.id.with("on"), muted, 0.16);
+    let rest = mix(theme::PANEL_HI(), theme::HOVER(), hover);
+    let fill = mix(rest, theme::MUTE(), on);
+    let fg = mix(theme::TEXT_DIM(), Color32::WHITE, on);
     ui.painter().rect_filled(rect, theme::pill(size.y), fill);
     speaker_icon(ui.painter(), rect.center(), size.y * 0.66, muted, fg);
     resp.on_hover_text(if muted { "Unmute" } else { "Mute" })
@@ -125,11 +138,13 @@ pub fn mute_button(ui: &mut Ui, muted: bool, size: egui::Vec2) -> Response {
 pub fn chip(ui: &mut Ui, text: &str, width: f32, accent: bool) -> Response {
     const H: f32 = 28.0;
     let (rect, resp) = ui.allocate_exact_size(vec2(width, H), Sense::click());
-    let fill = if resp.hovered() || resp.is_pointer_button_down_on() {
-        theme::HOVER()
-    } else {
-        theme::PANEL_HI()
-    };
+    let hover = anim(
+        ui,
+        resp.id.with("h"),
+        resp.hovered() || resp.is_pointer_button_down_on(),
+        0.12,
+    );
+    let fill = mix(theme::PANEL_HI(), theme::HOVER(), hover);
     ui.painter().rect_filled(rect, theme::pill(H), fill);
     if accent {
         // A soft amber ring marks a slot that has something assigned.
@@ -148,15 +163,15 @@ pub fn chip(ui: &mut Ui, text: &str, width: f32, accent: bool) -> Response {
         FontId::proportional(11.5),
         theme::TEXT(),
     );
-    // Down arrow.
-    let a = pos2(rect.right() - 14.0, rect.center().y);
+    // The arrow brightens and nudges down a touch when hovered.
+    let a = pos2(rect.right() - 14.0, rect.center().y + hover);
     ui.painter().add(Shape::convex_polygon(
         vec![
             pos2(a.x - 3.5, a.y - 2.0),
             pos2(a.x + 3.5, a.y - 2.0),
             pos2(a.x, a.y + 2.5),
         ],
-        theme::TEXT_DIM(),
+        mix(theme::TEXT_DIM(), theme::TEXT(), hover),
         Stroke::NONE,
     ));
     resp
@@ -301,7 +316,18 @@ pub fn db_fader(
             let x = rect.left() + 32.0 + ch as f32 * 10.0;
             let col = Rect::from_min_max(pos2(x, top), pos2(x + 8.0, bottom));
             painter.rect_filled(col, CornerRadius::same(2), theme::METER_BG());
-            draw_db_meter(painter, col.shrink2(vec2(1.0, 1.0)), amp_to_db(peak), dim);
+            // Ballistics: up at once, down smoothly, so the bar flows instead of flickering.
+            let bar_id = id.with(("bar", ch));
+            let dt = ui.input(|i| i.stable_dt).min(0.1);
+            let now = amp_to_db(peak);
+            let prev = ui.data(|d| d.get_temp::<f32>(bar_id)).unwrap_or(now);
+            let shown = if now >= prev {
+                now
+            } else {
+                prev - (prev - now) * (1.0 - (-dt / METER_RELEASE_S).exp())
+            };
+            ui.data_mut(|d| d.insert_temp(bar_id, shown));
+            draw_db_meter(painter, col.shrink2(vec2(1.0, 1.0)), shown, dim);
         }
     }
     for (ch, &peak) in peaks.iter().enumerate() {
@@ -363,7 +389,9 @@ pub fn db_fader(
 
     // Round knob with a soft drop shadow and a ring in the strip's colour.
     let centre = pos2(track_x, fill_top);
-    let lift = if resp.dragged() { 1.5 } else { 0.0 };
+    // The knob swells a little as the pointer arrives and more while it is held.
+    let swell = anim(ui, id.with("swell"), resp.hovered() || resp.dragged(), 0.14);
+    let lift = swell * 1.0 + if resp.dragged() { 1.0 } else { 0.0 };
     painter.circle_filled(
         pos2(centre.x, centre.y + 2.5),
         13.0 + lift,
@@ -390,15 +418,14 @@ pub fn db_fader(
 /// A small latching pill with a text label: filled in `color` when on.
 pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color32) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    let fill = if on {
-        color
-    } else if resp.hovered() {
-        theme::HOVER()
-    } else {
-        theme::PANEL_HI()
-    };
-    let fg = if on { theme::ON_ACCENT() } else { theme::TEXT_DIM() };
-    ui.painter().rect_filled(rect, theme::pill(size.y), fill);
+    let hover = anim(ui, resp.id.with("h"), resp.hovered(), 0.12);
+    let lit = anim(ui, resp.id.with("on"), on, 0.16);
+    let rest = mix(theme::PANEL_HI(), theme::HOVER(), hover);
+    let fill = mix(rest, color, lit);
+    let fg = mix(theme::TEXT_DIM(), theme::ON_ACCENT(), lit);
+    // A press squeezes the pill in slightly.
+    let body = rect.shrink(if resp.is_pointer_button_down_on() { 1.0 } else { 0.0 });
+    ui.painter().rect_filled(body, theme::pill(size.y), fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -413,16 +440,19 @@ pub fn toggle(ui: &mut Ui, text: &str, on: bool, size: egui::Vec2, color: Color3
 /// working; a solid amber pill means its editor is open.
 pub fn process_button(ui: &mut Ui, text: &str, on: bool, open: bool, size: egui::Vec2) -> Response {
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    let (fill, fg) = if open {
-        (theme::ACCENT(), theme::ON_ACCENT())
-    } else if on {
-        (theme::ACCENT().linear_multiply(0.22), theme::ACCENT())
-    } else if resp.hovered() {
-        (theme::HOVER(), theme::TEXT_DIM())
-    } else {
-        (theme::PANEL_HI(), theme::TEXT_DIM())
-    };
-    ui.painter().rect_filled(rect, theme::pill(size.y), fill);
+    let hover = anim(ui, resp.id.with("h"), resp.hovered(), 0.12);
+    let working = anim(ui, resp.id.with("on"), on, 0.16);
+    let opened = anim(ui, resp.id.with("open"), open, 0.18);
+    let rest = mix(theme::PANEL_HI(), theme::HOVER(), hover);
+    let tinted = mix(rest, theme::ACCENT().linear_multiply(0.22), working);
+    let fill = mix(tinted, theme::ACCENT(), opened);
+    let fg = mix(
+        mix(theme::TEXT_DIM(), theme::ACCENT(), working),
+        theme::ON_ACCENT(),
+        opened,
+    );
+    let body = rect.shrink(if resp.is_pointer_button_down_on() { 1.0 } else { 0.0 });
+    ui.painter().rect_filled(body, theme::pill(size.y), fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -458,17 +488,17 @@ pub fn ghost_button(ui: &mut Ui, text: &str, active: bool) -> Response {
         .size()
         .x;
     let (rect, resp) = ui.allocate_exact_size(vec2(w + 26.0, 30.0), Sense::click());
-    if active {
-        ui.painter().rect_filled(rect, theme::pill(30.0), theme::ACTIVE());
-    } else if resp.hovered() {
-        ui.painter().rect_filled(rect, theme::pill(30.0), theme::PANEL_HI());
-    }
+    let hover = anim(ui, resp.id.with("h"), resp.hovered(), 0.12);
+    let on = anim(ui, resp.id.with("on"), active, 0.16);
+    let wash = mix(theme::PANEL_HI().linear_multiply(0.0), theme::PANEL_HI(), hover);
+    let fill = mix(wash, theme::ACTIVE(), on);
+    ui.painter().rect_filled(rect, theme::pill(30.0), fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         text,
         font,
-        if active || resp.hovered() { theme::TEXT() } else { theme::TEXT_DIM() },
+        mix(theme::TEXT_DIM(), theme::TEXT(), hover.max(on)),
     );
     resp
 }
@@ -481,6 +511,17 @@ pub fn segmented(ui: &mut Ui, id: Id, labels: &[(&str, &str)], selected: usize) 
     let n = labels.len();
     let (rect, _) = ui.allocate_exact_size(vec2(SEG_W * n as f32 + 8.0, H), Sense::hover());
     ui.painter().rect_filled(rect, theme::pill(H), theme::PANEL());
+    // The amber thumb glides to the chosen segment.
+    let at = ui
+        .ctx()
+        .animate_value_with_time(id.with("thumb"), selected as f32, 0.2);
+    let ease = |t: f32| t * t * (3.0 - 2.0 * t);
+    let frac = at.clamp(0.0, (n - 1) as f32);
+    let thumb = Rect::from_min_size(
+        rect.min + vec2(4.0 + frac * SEG_W, 4.0),
+        vec2(SEG_W, H - 8.0),
+    );
+    ui.painter().rect_filled(thumb, theme::pill(H - 8.0), theme::ACCENT());
     let mut clicked = None;
     for (i, (label, tip)) in labels.iter().enumerate() {
         let seg = Rect::from_min_size(
@@ -488,18 +529,16 @@ pub fn segmented(ui: &mut Ui, id: Id, labels: &[(&str, &str)], selected: usize) 
             vec2(SEG_W, H - 8.0),
         );
         let resp = ui.interact(seg, id.with(i), Sense::click()).on_hover_text(*tip);
-        let on = i == selected;
-        if on {
-            ui.painter().rect_filled(seg, theme::pill(H - 8.0), theme::ACCENT());
-        } else if resp.hovered() {
-            ui.painter().rect_filled(seg, theme::pill(H - 8.0), theme::PANEL_HI());
-        }
+        // How much of this segment the thumb covers decides its text colour.
+        let cover = ease((1.0 - (frac - i as f32).abs()).clamp(0.0, 1.0));
+        let hover = anim(ui, id.with(("h", i)), resp.hovered(), 0.12);
+        let idle = mix(theme::TEXT_DIM(), theme::TEXT(), hover);
         ui.painter().text(
             seg.center(),
             egui::Align2::CENTER_CENTER,
             *label,
             FontId::proportional(13.0),
-            if on { theme::ON_ACCENT() } else { theme::TEXT_DIM() },
+            mix(idle, theme::ON_ACCENT(), cover),
         );
         if resp.clicked() {
             clicked = Some(i);
