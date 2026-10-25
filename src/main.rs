@@ -1,4 +1,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+// Newer clippy wants `as_chunks` for fixed-size chunk loops; the audio code uses `chunks_exact(2)`
+// on purpose (it works on every toolchain), so the lint is allowed rather than chased.
+#![allow(unknown_lints)]
+#![allow(clippy::chunks_exact_to_as_chunks)]
 
 mod backend;
 mod config;
