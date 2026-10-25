@@ -36,6 +36,7 @@ fn sess(id: &str, device: &str, pid: u32, exe: &str, name: &str, volume: f32) ->
         muted: false,
         peak: 0.0,
         active: true,
+        has_window: true,
     }
 }
 

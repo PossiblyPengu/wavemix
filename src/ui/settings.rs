@@ -166,6 +166,18 @@ impl MixerApp {
             "Pro mode only sees sound that goes through the virtual cable. Your normal speakers \
              are put back when the engine stops or Wavemix quits.",
         );
+        let mut background = self.config.show_background_apps;
+        if ui
+            .checkbox(
+                &mut background,
+                "Also list background programs and services",
+            )
+            .on_hover_text("By default only programs that are open, or making sound, are shown")
+            .changed()
+        {
+            self.config.show_background_apps = background;
+            self.config.save();
+        }
         let mut routing = self.config.experimental_routing;
         if ui
             .checkbox(&mut routing, "Let me send each app to a different output")

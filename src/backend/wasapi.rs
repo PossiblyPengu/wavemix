@@ -106,6 +106,8 @@ pub struct WasapiEngine {
     sessions: Vec<SessionHandle>,
     /// pid -> who it is, so a rescan doesn't reopen every process and re-extract its icon.
     app_cache: HashMap<u32, AppInfo>,
+    /// Programs with an open window, refreshed on each rescan.
+    windowed: std::collections::HashSet<String>,
     /// Meter reads that failed, and the last error: if levels sit at zero, this says why.
     meter_errors: u64,
     last_meter_error: Option<String>,
@@ -124,6 +126,7 @@ impl WasapiEngine {
                 devices: Vec::new(),
                 sessions: Vec::new(),
                 app_cache: HashMap::new(),
+                windowed: Default::default(),
                 meter_errors: 0,
                 last_meter_error: None,
             }
@@ -141,6 +144,7 @@ impl WasapiEngine {
             self.sessions.clear();
             return;
         };
+        self.windowed = crate::winutil::windowed_exes();
         let mut devices = Vec::new();
         let mut sessions = Vec::new();
         for (flow, data_flow) in [(Flow::Render, eRender), (Flow::Capture, eCapture)] {
@@ -236,8 +240,10 @@ impl WasapiEngine {
                         }
                     })
                 };
+                let has_window = !system && self.windowed.contains(&exe.to_lowercase());
                 out.push(SessionHandle {
                     info: Session {
+                        has_window,
                         id,
                         device_id: device_id.to_string(),
                         pid,

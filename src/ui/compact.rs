@@ -85,10 +85,15 @@ impl MixerApp {
             .map(|d| d.id.clone());
         let routing_on = self.config.experimental_routing;
         let routed = |app: &AppStrip| routing_on || Some(&app.device_id) != default_id.as_ref();
-        let (playing, idle): (Vec<AppStrip>, Vec<AppStrip>) = self
+        let (playing, mut idle): (Vec<AppStrip>, Vec<AppStrip>) = self
             .all_apps(snap, true)
             .into_iter()
             .partition(|a| a.active);
+        // Only programs that are open: services and tray helpers that aren't making sound stay
+        // out of the list (unless asked for in Settings).
+        if !self.config.show_background_apps {
+            idle.retain(|a| a.has_window);
+        }
 
         let list_top = ui.cursor().top();
         let scroll = egui::ScrollArea::vertical()

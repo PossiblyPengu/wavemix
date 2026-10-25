@@ -52,6 +52,9 @@ pub struct Session {
     /// False once the session has gone inactive (no audio playing); still listed so the fader
     /// can be set before the app makes a sound.
     pub active: bool,
+    /// The program has an open window. Services and tray-only helpers don't, and are left out of
+    /// the list while idle.
+    pub has_window: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -155,6 +158,7 @@ pub struct AppStrip {
     pub muted: bool,
     pub peak: f32,
     pub active: bool,
+    pub has_window: bool,
 }
 
 /// Our own audio sessions (the mixer playing to a speaker) are not apps to control.
@@ -182,6 +186,7 @@ fn new_strip(key: String, s: &Session) -> AppStrip {
         muted: true,
         peak: 0.0,
         active: false,
+        has_window: false,
     }
 }
 
@@ -198,6 +203,7 @@ fn add_session(g: &mut AppStrip, s: &Session) {
     g.muted &= s.muted;
     g.peak = g.peak.max(s.peak);
     g.active |= s.active;
+    g.has_window |= s.has_window;
 }
 
 /// Active apps first, then alphabetical, so a strip doesn't jump around while it plays.
@@ -285,6 +291,7 @@ mod tests {
             icon: None,
             peak: 0.0,
             active,
+            has_window: true,
         }
     }
 
@@ -303,6 +310,23 @@ mod tests {
                                                // Nothing playing: fall back to the default device.
         let quiet = [on("a", "d2", false), on("b", "d1", false)];
         assert_eq!(group_apps(&quiet, Some("d1"))[0].device_id, "d1");
+    }
+
+    #[test]
+    fn an_app_counts_as_open_if_any_of_its_sessions_has_a_window() {
+        // A browser plays sound from a window-less helper process, but the browser has a window.
+        let mut helper = sess("a", "d1", "chrome", 1.0, false, false);
+        helper.has_window = false;
+        let main = sess("b", "d1", "chrome", 1.0, false, false);
+        let mut service = sess("c", "d1", "avastsvc", 1.0, false, false);
+        service.has_window = false;
+        let apps = group_apps(&[helper, main, service], None);
+        let open: Vec<&str> = apps
+            .iter()
+            .filter(|a| a.has_window)
+            .map(|a| a.key.as_str())
+            .collect();
+        assert_eq!(open, ["chrome"]);
     }
 
     #[test]

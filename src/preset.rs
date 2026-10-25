@@ -185,6 +185,7 @@ mod tests {
             muted: false,
             peak: 0.0,
             active: true,
+            has_window: true,
         };
         Snapshot {
             devices: vec![dev("d1", 0.5), dev("d2", 0.9)],

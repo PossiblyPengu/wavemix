@@ -186,6 +186,8 @@ pub struct Config {
     pub theme: ThemeMode,
     /// Look for new releases now and then.
     pub check_updates: bool,
+    /// List idle background programs and services too, not only apps that are open or playing.
+    pub show_background_apps: bool,
     /// Interface zoom: 1.0 is normal.
     pub ui_scale: f32,
     /// A version the user said "Later" to, so its banner stays away.
@@ -227,6 +229,7 @@ impl Default for Config {
             hide_windows_osd: true,
             theme: ThemeMode::System,
             check_updates: true,
+            show_background_apps: false,
             ui_scale: 1.0,
             skipped_update: String::new(),
             device_names: BTreeMap::new(),
