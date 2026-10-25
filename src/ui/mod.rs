@@ -54,6 +54,7 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    list_anim: compact::ListAnim,
     page_since: std::time::Instant,
     /// The strip whose editor is open and when it opened, for the editor's fade-in.
     editor_strip: Option<usize>,
@@ -152,6 +153,7 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            list_anim: compact::ListAnim::default(),
             page_since: std::time::Instant::now(),
             editor_strip: None,
             editor_since: std::time::Instant::now(),

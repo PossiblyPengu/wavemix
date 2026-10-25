@@ -14,6 +14,33 @@ struct RowChange {
     mute: Option<bool>,
 }
 
+/// How long a row takes to slide in, and to fade then fold away.
+const ROW_IN_S: f32 = 0.22;
+const ROW_OUT_S: f32 = 0.3;
+
+fn ease(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// An app that stopped playing, kept on screen while it fades and folds away.
+struct Ghost {
+    app: AppStrip,
+    index: usize,
+    height: f32,
+    since: std::time::Instant,
+}
+
+/// Remembers which rows are new and which just left, so the list can animate both.
+#[derive(Default)]
+pub struct ListAnim {
+    primed: bool,
+    born: std::collections::HashMap<String, std::time::Instant>,
+    /// Playing apps from the previous frame, in order, and the height each row took.
+    last: Vec<(AppStrip, f32)>,
+    ghosts: Vec<Ghost>,
+}
+
 impl MixerApp {
     pub(super) fn compact(&mut self, ui: &mut Ui, snap: &Snapshot) {
         let outputs: Vec<Device> = snap
@@ -78,10 +105,93 @@ impl MixerApp {
                     );
                     ui.add_space(8.0);
                 }
-                for app in &playing {
-                    self.app_row(ui, snap, app, always_pills || routed(app));
-                    ui.add_space(6.0);
+                // Bookkeeping for the enter and exit animations.
+                let now = std::time::Instant::now();
+                let keys: Vec<&str> = playing.iter().map(|a| a.key.as_str()).collect();
+                if self.list_anim.primed {
+                    // Rows that were playing last frame and are not now become ghosts.
+                    let gone: Vec<(usize, AppStrip, f32)> = self
+                        .list_anim
+                        .last
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, (a, _))| !keys.contains(&a.key.as_str()))
+                        .map(|(i, (a, h))| (i, a.clone(), *h))
+                        .collect();
+                    for (index, app, height) in gone {
+                        self.list_anim.ghosts.push(Ghost { app, index, height, since: now });
+                    }
+                    for a in &playing {
+                        self.list_anim.born.entry(a.key.clone()).or_insert(now);
+                    }
+                } else {
+                    // The first frame shows what is already playing without a fanfare.
+                    let long_ago = now - std::time::Duration::from_secs(5);
+                    for a in &playing {
+                        self.list_anim.born.insert(a.key.clone(), long_ago);
+                    }
+                    self.list_anim.primed = true;
                 }
+                self.list_anim.born.retain(|k, _| keys.contains(&k.as_str()));
+                self.list_anim
+                    .ghosts
+                    .retain(|g| g.since.elapsed().as_secs_f32() < ROW_OUT_S);
+                let ghosts: Vec<(usize, AppStrip, f32, f32)> = self
+                    .list_anim
+                    .ghosts
+                    .iter()
+                    .map(|g| (g.index, g.app.clone(), g.height, g.since.elapsed().as_secs_f32() / ROW_OUT_S))
+                    .collect();
+
+                let mut drawn: Vec<(AppStrip, f32)> = Vec::new();
+                let total = playing.len() + ghosts.len();
+                let (mut live, mut ghost) = (0, 0);
+                for slot in 0..total {
+                    // A ghost goes back where its row used to be.
+                    let ghost_here = ghosts.get(ghost).is_some_and(|g| g.0 <= slot);
+                    if ghost_here && ghost < ghosts.len() {
+                        let (_, app, height, t) = &ghosts[ghost];
+                        ghost += 1;
+                        if *t < 0.5 {
+                            ui.scope(|ui| {
+                                ui.set_opacity(1.0 - ease(*t * 2.0));
+                                ui.add_enabled_ui(false, |ui| {
+                                    self.app_row(ui, snap, app, always_pills || routed(app));
+                                });
+                            });
+                            ui.add_space(6.0);
+                        } else {
+                            let fold = 1.0 - ease((*t - 0.5) * 2.0);
+                            ui.add_space((*height + 6.0) * fold);
+                        }
+                        ui.ctx().request_repaint();
+                    } else if let Some(app) = playing.get(live) {
+                        live += 1;
+                        let age = self
+                            .list_anim
+                            .born
+                            .get(&app.key)
+                            .map_or(1.0, |b| b.elapsed().as_secs_f32() / ROW_IN_S);
+                        let t = ease(age);
+                        let top = ui.cursor().top();
+                        egui::Frame::new()
+                            .outer_margin(egui::Margin {
+                                left: ((1.0 - t) * 18.0) as i8,
+                                ..Default::default()
+                            })
+                            .show(ui, |ui| {
+                                ui.set_opacity(t);
+                                self.app_row(ui, snap, app, always_pills || routed(app));
+                            });
+                        drawn.push((app.clone(), ui.cursor().top() - top));
+                        ui.add_space(6.0);
+                        if age < 1.0 {
+                            ui.ctx().request_repaint();
+                        }
+                    }
+                }
+                self.list_anim.last = drawn;
+
                 if !idle.is_empty() {
                     egui::CollapsingHeader::new(
                         RichText::new(format!("Not playing ({})", idle.len()))
