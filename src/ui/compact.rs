@@ -384,6 +384,48 @@ impl MixerApp {
                     v = (v + scroll.signum() * 0.02).clamp(0.0, 1.0);
                 }
             }
+            // From the keyboard: arrows nudge 2% (Shift 1%, Ctrl 10%), Page keys 10%, Home and End
+            // jump to full and silent, M mutes.
+            if resp.has_focus() {
+                use egui::{Key, Modifiers};
+                let step = ui.input(|i| {
+                    if i.modifiers.shift {
+                        0.01
+                    } else if i.modifiers.ctrl {
+                        0.10
+                    } else {
+                        0.02
+                    }
+                });
+                let pressed = |ui: &mut Ui, key: Key| {
+                    ui.input_mut(|i| {
+                        i.consume_key(Modifiers::NONE, key)
+                            || i.consume_key(Modifiers::SHIFT, key)
+                            || i.consume_key(Modifiers::CTRL, key)
+                    })
+                };
+                for (key, delta) in [
+                    (Key::ArrowRight, step),
+                    (Key::ArrowUp, step),
+                    (Key::ArrowLeft, -step),
+                    (Key::ArrowDown, -step),
+                    (Key::PageUp, 0.10),
+                    (Key::PageDown, -0.10),
+                ] {
+                    if pressed(ui, key) {
+                        v = (v + delta).clamp(0.0, 1.0);
+                    }
+                }
+                if pressed(ui, Key::Home) {
+                    v = 1.0;
+                }
+                if pressed(ui, Key::End) {
+                    v = 0.0;
+                }
+                if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::M)) {
+                    change.mute = Some(!muted);
+                }
+            }
             if (v - volume).abs() > f32::EPSILON {
                 change.volume = Some(v);
             }

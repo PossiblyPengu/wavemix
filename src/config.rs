@@ -51,6 +51,17 @@ pub struct Hotkeys {
     pub volume_up: String,
     pub volume_down: String,
     pub mute: String,
+    /// Mute or unmute the default microphone.
+    pub mic_mute: String,
+    /// Switch to the next / previous output (speakers, headphones, ...).
+    pub next_output: String,
+    pub prev_output: String,
+    /// Volume and mute of the app in the front window.
+    pub app_up: String,
+    pub app_down: String,
+    pub app_mute: String,
+    /// Show or hide Wavemix.
+    pub open: String,
 }
 
 impl Default for Hotkeys {
@@ -59,6 +70,61 @@ impl Default for Hotkeys {
             volume_up: "ctrl+alt+up".into(),
             volume_down: "ctrl+alt+down".into(),
             mute: "ctrl+alt+m".into(),
+            mic_mute: String::new(),
+            next_output: String::new(),
+            prev_output: String::new(),
+            app_up: String::new(),
+            app_down: String::new(),
+            app_mute: String::new(),
+            open: String::new(),
+        }
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl Hotkeys {
+    /// Every binding with its label, in the order of [`crate::hotkeys::ACTIONS`].
+    pub fn entries(&self) -> [(&'static str, &str); 10] {
+        [
+            ("Volume up", &self.volume_up),
+            ("Volume down", &self.volume_down),
+            ("Mute", &self.mute),
+            ("Mute microphone", &self.mic_mute),
+            ("Next output", &self.next_output),
+            ("Previous output", &self.prev_output),
+            ("Front app louder", &self.app_up),
+            ("Front app quieter", &self.app_down),
+            ("Front app mute", &self.app_mute),
+            ("Show / hide Wavemix", &self.open),
+        ]
+    }
+
+    pub fn entries_mut(&mut self) -> [(&'static str, &mut String); 10] {
+        [
+            ("Volume up", &mut self.volume_up),
+            ("Volume down", &mut self.volume_down),
+            ("Mute", &mut self.mute),
+            ("Mute microphone", &mut self.mic_mute),
+            ("Next output", &mut self.next_output),
+            ("Previous output", &mut self.prev_output),
+            ("Front app louder", &mut self.app_up),
+            ("Front app quieter", &mut self.app_down),
+            ("Front app mute", &mut self.app_mute),
+            ("Show / hide Wavemix", &mut self.open),
+        ]
+    }
+
+    /// The keyboard's own volume keys for the main volume, and Ctrl plus them for the app in front.
+    /// Windows' own volume popup doesn't appear for keys Wavemix has claimed.
+    pub fn volume_keys(&self) -> Self {
+        Self {
+            volume_up: "AudioVolumeUp".into(),
+            volume_down: "AudioVolumeDown".into(),
+            mute: "AudioVolumeMute".into(),
+            app_up: "ctrl+AudioVolumeUp".into(),
+            app_down: "ctrl+AudioVolumeDown".into(),
+            app_mute: "ctrl+AudioVolumeMute".into(),
+            ..self.clone()
         }
     }
 }

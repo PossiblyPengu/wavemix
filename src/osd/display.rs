@@ -48,6 +48,13 @@ use crate::model::{amp_to_db, db_to_meter, Command, Flow};
 
 const CLASS_NAME: &str = "WavemixOsdClass";
 const WM_POKE: u32 = WM_APP + 1;
+const WM_ANNOUNCE: u32 = WM_APP + 2;
+/// `shown` value that means "draw the announcement, not a device".
+const ANNOUNCE_ID: &str = "\u{0}announce";
+
+/// A one-off message for the bar: a name, a level, and whether it is muted. Used for things that
+/// aren't the default playback device (the microphone, the app in front).
+static ANNOUNCEMENT: Mutex<Option<(String, i32, bool)>> = Mutex::new(None);
 const FRAME_MS: u32 = 16;
 const POLL_MS: u32 = 50;
 const TIMER_ANIM: usize = 1;
@@ -153,6 +160,17 @@ impl Osd {
 
     /// Show the display for the default device (used even when nothing changed, e.g. a hotkey
     /// pressed at maximum volume).
+    /// Show the bar with a custom label and level, for hotkeys that act on something other than
+    /// the default speakers.
+    pub fn announce(&self, label: &str, percent: i32, muted: bool) {
+        if let Ok(mut a) = ANNOUNCEMENT.lock() {
+            *a = Some((label.to_string(), percent, muted));
+        }
+        unsafe {
+            PostThreadMessageW(self.thread_id, WM_ANNOUNCE, 0, 0);
+        }
+    }
+
     pub fn poke(&self) {
         unsafe {
             PostThreadMessageW(self.thread_id, WM_POKE, 0, 0);
@@ -269,7 +287,12 @@ unsafe fn run(
 
     while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
         let cfg = || shared.settings.lock().map(|s| s.clone()).ok();
-        if msg.hwnd.is_null() && msg.message == WM_POKE {
+        if msg.hwnd.is_null() && msg.message == WM_ANNOUNCE {
+            if let Some(cfg) = cfg().filter(|c| c.enabled) {
+                state.shown = Some(ANNOUNCE_ID.to_string());
+                state.show(&backend, &shared, &cfg);
+            }
+        } else if msg.hwnd.is_null() && msg.message == WM_POKE {
             if let Some(cfg) = cfg().filter(|c| c.enabled) {
                 state.shown = None;
                 state.show(&backend, &shared, &cfg);
@@ -699,6 +722,17 @@ fn read_frame(
     shown: &Option<String>,
     names: &HashMap<String, String>,
 ) -> Option<Frame> {
+    if shown.as_deref() == Some(ANNOUNCE_ID) {
+        let (label, percent, muted) = ANNOUNCEMENT.lock().ok().and_then(|a| a.clone())?;
+        return Some(Frame {
+            label,
+            percent,
+            muted,
+            meter: 0.0,
+            meter_peak: 0.0,
+            peak_db: -60.0,
+        });
+    }
     let snap = backend.snapshot();
     let d = snap
         .devices

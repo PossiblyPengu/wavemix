@@ -154,26 +154,75 @@ impl MixerApp {
 
         #[cfg(windows)]
         {
-            section(ui, "Hotkeys");
+            section(ui, "Keyboard shortcuts");
             hint(
                 ui,
-                "They change the default playback device, even when this window is hidden. \
-                 Examples: ctrl+alt+up, win+f9. Leave blank to turn one off.",
+                "They work even when Wavemix is hidden. Click Record, then press the keys you want. \
+                 For your keyboard's own volume keys, use the button below; Windows' volume popup \
+                 then stays away, since Wavemix has taken the keys.",
             );
+            if ui
+                .button("Use my keyboard's volume keys")
+                .on_hover_text(
+                    "Volume keys change the main volume; Ctrl + volume keys change the app in front",
+                )
+                .clicked()
+            {
+                self.hk_edit = self.hk_edit.volume_keys();
+                self.apply_hotkeys_from_edit();
+            }
+            // Recording: the next key combination pressed is written into the box being recorded.
+            let recorded = self.recording.and_then(|_| {
+                ui.ctx().input(|i| {
+                    i.events.iter().find_map(|e| match e {
+                        egui::Event::Key {
+                            key,
+                            pressed: true,
+                            modifiers,
+                            ..
+                        } => Some((*key, *modifiers)),
+                        _ => None,
+                    })
+                })
+            });
+            let mut finished = false;
             egui::Grid::new("hotkeys")
-                .num_columns(2)
+                .num_columns(3)
                 .spacing([12.0, 6.0])
                 .show(ui, |ui| {
-                    ui.label("Volume up");
-                    ui.text_edit_singleline(&mut self.hk_edit.volume_up);
-                    ui.end_row();
-                    ui.label("Volume down");
-                    ui.text_edit_singleline(&mut self.hk_edit.volume_down);
-                    ui.end_row();
-                    ui.label("Mute");
-                    ui.text_edit_singleline(&mut self.hk_edit.mute);
-                    ui.end_row();
+                    for (i, (label, text)) in self.hk_edit.entries_mut().into_iter().enumerate() {
+                        ui.label(label);
+                        let recording = self.recording == Some(i);
+                        if recording {
+                            if let Some((key, mods)) = recorded {
+                                if key == egui::Key::Escape {
+                                    finished = true;
+                                } else if let Some(combo) = key_combo(key, mods) {
+                                    *text = combo;
+                                    finished = true;
+                                } else {
+                                    self.shell.hk_status =
+                                        vec![format!("{} can't be used as a shortcut", key.name())];
+                                }
+                            }
+                            ui.add(
+                                egui::TextEdit::singleline(&mut String::from("press the keys…"))
+                                    .interactive(false)
+                                    .desired_width(150.0),
+                            );
+                        } else {
+                            ui.add(egui::TextEdit::singleline(text).desired_width(150.0));
+                        }
+                        let button = if recording { "Cancel" } else { "Record" };
+                        if ui.small_button(button).clicked() {
+                            self.recording = if recording { None } else { Some(i) };
+                        }
+                        ui.end_row();
+                    }
                 });
+            if finished {
+                self.recording = None;
+            }
             let mut step = self.config.volume_step;
             if ui
                 .add(egui::Slider::new(&mut step, 1..=20).text("Step per press, %"))
@@ -391,4 +440,28 @@ fn section(ui: &mut Ui, title: &str) {
 
 fn hint(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(11.5).color(theme::TEXT_DIM()));
+}
+
+/// An egui key plus modifiers as a shortcut string like `ctrl+alt+Up`, or `None` for keys that
+/// can't be bound on their own (modifiers) or aren't named in a way the shortcut parser knows.
+#[cfg(windows)]
+fn key_combo(key: egui::Key, mods: egui::Modifiers) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if mods.ctrl {
+        parts.push("ctrl".into());
+    }
+    if mods.alt {
+        parts.push("alt".into());
+    }
+    if mods.shift {
+        parts.push("shift".into());
+    }
+    if mods.mac_cmd || mods.command && !mods.ctrl {
+        parts.push("super".into());
+    }
+    parts.push(key.name().replace(' ', ""));
+    let text = parts.join("+");
+    std::str::FromStr::from_str(&text)
+        .ok()
+        .map(|_: global_hotkey::hotkey::HotKey| text)
 }

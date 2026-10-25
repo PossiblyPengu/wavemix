@@ -21,6 +21,8 @@ mod tray;
 mod ui;
 mod update;
 mod voicemeeter;
+#[cfg(windows)]
+mod winutil;
 
 use config::Config;
 use ui::MixerApp;

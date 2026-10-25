@@ -94,6 +94,9 @@ pub struct MixerApp {
     /// Hotkey text being edited in settings; applied with the Apply button.
     #[cfg(windows)]
     hk_edit: crate::config::Hotkeys,
+    /// Which shortcut box is waiting for a key press (Settings > Keyboard shortcuts).
+    #[cfg(windows)]
+    recording: Option<usize>,
     #[cfg(windows)]
     shell: shell::ShellState,
 }
@@ -194,6 +197,8 @@ impl MixerApp {
             rename_buf: String::new(),
             #[cfg(windows)]
             hk_edit,
+            #[cfg(windows)]
+            recording: None,
             #[cfg(windows)]
             shell,
         };

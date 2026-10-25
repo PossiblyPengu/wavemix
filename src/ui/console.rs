@@ -105,6 +105,18 @@ fn panel(
     });
 }
 
+/// The index after (or before) `current` in a ring of `len`; with nothing current, the first (or
+/// last).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn cycle_index(current: Option<usize>, len: usize, forward: bool) -> usize {
+    match (current, forward) {
+        (None, true) => 0,
+        (None, false) => len - 1,
+        (Some(i), true) => (i + 1) % len,
+        (Some(i), false) => (i + len - 1) % len,
+    }
+}
+
 fn db_text(db: f32) -> String {
     if db <= -59.9 {
         "-inf dB".to_string()
@@ -116,6 +128,11 @@ fn db_text(db: f32) -> String {
 impl MixerApp {
     pub(super) fn console(&mut self, ui: &mut Ui) {
         self.auto_configure();
+        if self.editing.is_some()
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.editing = None;
+        }
         let mut params = self.engine.params();
         let before = params.clone();
         let devices = self.engine.devices();
@@ -482,6 +499,13 @@ impl MixerApp {
             self.unroute_windows_audio();
             return;
         }
+        self.set_play_through(next);
+    }
+
+    /// Send system audio out of exactly these devices (Windows names), turning the engine on and
+    /// routing Windows through the mixer if that isn't already so.
+    pub(super) fn set_play_through(&mut self, next: Vec<String>) {
+        let (routed, cable) = self.route_state();
         self.auto_configure();
         for b in 0..3 {
             let dev = next.get(b).cloned();
@@ -517,6 +541,58 @@ impl MixerApp {
                 self.route_windows_audio(&cable);
             }
         }
+    }
+
+    /// Hardware playback devices (no virtual cables), by Windows name.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn hardware_outputs(&self) -> Vec<String> {
+        self.engine
+            .devices()
+            .outputs
+            .iter()
+            .filter(|d| !d.is_virtual && !d.is_loopback)
+            .map(|d| d.name.clone())
+            .collect()
+    }
+
+    /// Hotkey: move to the next (or previous) output. While Windows is routed through the mixer
+    /// that is the mixer's output; otherwise it is Windows' default playback device. Returns the
+    /// name of the device switched to.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn cycle_output(&mut self, forward: bool) -> Option<String> {
+        let (routed, _) = self.route_state();
+        if routed && self.engine.is_running() {
+            let hardware = self.hardware_outputs();
+            if hardware.len() < 2 {
+                return None;
+            }
+            let current = self.config.engine.io.outputs[..3]
+                .iter()
+                .flatten()
+                .next()
+                .and_then(|c| hardware.iter().position(|h| h == c));
+            let name = hardware[cycle_index(current, hardware.len(), forward)].clone();
+            self.set_play_through(vec![name.clone()]);
+            return Some(self.device_label(&name, hardware.iter().map(String::as_str)));
+        }
+        let snap = self.backend.snapshot();
+        let render: Vec<&crate::model::Device> = snap
+            .devices
+            .iter()
+            .filter(|d| {
+                d.flow == crate::model::Flow::Render && !crate::engine::io::looks_virtual(&d.name)
+            })
+            .collect();
+        if render.len() < 2 {
+            return None;
+        }
+        let current = render.iter().position(|d| d.is_default);
+        let target = render[cycle_index(current, render.len(), forward)];
+        self.backend.send(crate::model::Command::SetDefaultDevice {
+            id: target.id.clone(),
+            flow: crate::model::Flow::Render,
+        });
+        Some(self.device_label(&target.name, render.iter().map(|d| d.name.as_str())))
     }
 
     /// Say where the sound stops when something is playing but nothing is heard.
@@ -840,15 +916,28 @@ impl MixerApp {
                 self.mark_engine_dirty();
             }
 
-            if let Some(db) = strip::db_fader(
-                ui,
-                super::wid(("in-fader", i)),
-                fader_h,
-                p.gain_db,
-                peaks,
-                accent,
-                p.mute,
-            ) {
+            let fader_id = super::wid(("in-fader", i));
+            if strip::fader_focused(ui, fader_id) {
+                let key = |ui: &mut Ui, k: egui::Key| {
+                    ui.input_mut(|inp| inp.consume_key(egui::Modifiers::NONE, k))
+                };
+                if key(ui, egui::Key::M) {
+                    p.mute = !p.mute;
+                }
+                if key(ui, egui::Key::S) {
+                    p.solo = !p.solo;
+                }
+                if key(ui, egui::Key::E) {
+                    self.editing = if matches!(self.editing, Some((n, _)) if n == i) {
+                        None
+                    } else {
+                        Some((i, EditorTab::Eq))
+                    };
+                }
+            }
+            if let Some(db) =
+                strip::db_fader(ui, fader_id, fader_h, p.gain_db, peaks, accent, p.mute)
+            {
                 p.gain_db = db;
             }
             ui.vertical_centered(|ui| {
@@ -1004,9 +1093,21 @@ impl MixerApp {
                 self.engine.set_output(b, sel);
                 self.mark_engine_dirty();
             }
+            let fader_id = super::wid(("bus-fader", b));
+            if strip::fader_focused(ui, fader_id) {
+                let key = |ui: &mut Ui, k: egui::Key| {
+                    ui.input_mut(|inp| inp.consume_key(egui::Modifiers::NONE, k))
+                };
+                if key(ui, egui::Key::M) {
+                    p.mute = !p.mute;
+                }
+                if key(ui, egui::Key::L) {
+                    p.limiter = !p.limiter;
+                }
+            }
             if let Some(db) = strip::db_fader(
                 ui,
-                super::wid(("bus-fader", b)),
+                fader_id,
                 fader_h,
                 p.gain_db,
                 peaks,
@@ -1444,4 +1545,18 @@ fn comp_editor(ui: &mut Ui, p: &mut StripParams, gain_reduction_db: f32) {
             .text("Make-up gain")
             .suffix(" dB"),
     );
+}
+
+#[cfg(test)]
+mod cycle_tests {
+    use super::cycle_index;
+
+    #[test]
+    fn cycling_wraps_both_ways() {
+        assert_eq!(cycle_index(Some(0), 3, true), 1);
+        assert_eq!(cycle_index(Some(2), 3, true), 0);
+        assert_eq!(cycle_index(Some(0), 3, false), 2);
+        assert_eq!(cycle_index(None, 3, true), 0);
+        assert_eq!(cycle_index(None, 3, false), 2);
+    }
 }

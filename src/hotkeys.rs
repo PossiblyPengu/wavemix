@@ -17,7 +17,28 @@ pub enum HotkeyAction {
     VolumeUp,
     VolumeDown,
     ToggleMute,
+    MicMute,
+    NextOutput,
+    PrevOutput,
+    AppUp,
+    AppDown,
+    AppMute,
+    ToggleWindow,
 }
+
+/// What each entry of [`config::Hotkeys::entries`] does, in the same order.
+pub const ACTIONS: [HotkeyAction; 10] = [
+    HotkeyAction::VolumeUp,
+    HotkeyAction::VolumeDown,
+    HotkeyAction::ToggleMute,
+    HotkeyAction::MicMute,
+    HotkeyAction::NextOutput,
+    HotkeyAction::PrevOutput,
+    HotkeyAction::AppUp,
+    HotkeyAction::AppDown,
+    HotkeyAction::AppMute,
+    HotkeyAction::ToggleWindow,
+];
 
 pub struct Hotkeys {
     manager: Option<GlobalHotKeyManager>,
@@ -65,11 +86,7 @@ impl Hotkeys {
         map.clear();
 
         let mut errors = Vec::new();
-        for (label, text, action) in [
-            ("Volume up", &cfg.volume_up, HotkeyAction::VolumeUp),
-            ("Volume down", &cfg.volume_down, HotkeyAction::VolumeDown),
-            ("Mute", &cfg.mute, HotkeyAction::ToggleMute),
-        ] {
+        for ((label, text), action) in cfg.entries().into_iter().zip(ACTIONS) {
             let text = text.trim();
             if text.is_empty() {
                 continue;
@@ -90,5 +107,25 @@ impl Hotkeys {
             }
         }
         errors
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_keyboards_volume_keys_can_be_bound() {
+        let keys = config::Hotkeys::default().volume_keys();
+        for (label, text) in keys.entries() {
+            if !text.is_empty() {
+                assert!(HotKey::from_str(text).is_ok(), "{label}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_entry_has_an_action() {
+        assert_eq!(config::Hotkeys::default().entries().len(), ACTIONS.len());
     }
 }

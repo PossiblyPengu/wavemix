@@ -290,6 +290,11 @@ fn frac_to_db(frac: f32) -> f32 {
 /// Drag or scroll to change; it snaps to 0 dB (unity) when you get close; double-click resets.
 /// `height` lets the console stretch faders to fill the window. Returns the new gain if the user
 /// changed it.
+/// Is the fader with this id the one holding keyboard focus?
+pub fn fader_focused(ui: &Ui, id: Id) -> bool {
+    ui.memory(|m| m.has_focus(id.with("fader")))
+}
+
 pub fn db_fader(
     ui: &mut Ui,
     id: Id,
@@ -393,13 +398,64 @@ pub fn db_fader(
     if resp.double_clicked() {
         db = 0.0;
     }
+    // From the keyboard: arrows nudge (Shift for fine, Ctrl for coarse), Page keys jump, Home is
+    // unity and End is silence.
+    if resp.has_focus() {
+        use egui::{Key, Modifiers};
+        let step = ui.input(|i| {
+            if i.modifiers.shift {
+                0.1
+            } else if i.modifiers.ctrl {
+                3.0
+            } else {
+                0.5
+            }
+        });
+        let pressed = |ui: &mut Ui, key: Key| {
+            ui.input_mut(|i| {
+                i.consume_key(Modifiers::NONE, key)
+                    || i.consume_key(Modifiers::SHIFT, key)
+                    || i.consume_key(Modifiers::CTRL, key)
+            })
+        };
+        for (key, delta) in [
+            (Key::ArrowUp, step),
+            (Key::ArrowRight, step),
+            (Key::ArrowDown, -step),
+            (Key::ArrowLeft, -step),
+            (Key::PageUp, 3.0),
+            (Key::PageDown, -3.0),
+        ] {
+            if pressed(ui, key) {
+                db = (db + delta).clamp(GAIN_MIN_DB, GAIN_MAX_DB);
+            }
+        }
+        if pressed(ui, Key::Home) {
+            db = 0.0;
+        }
+        if pressed(ui, Key::End) {
+            db = GAIN_MIN_DB;
+        }
+    }
     if resp.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
         if scroll != 0.0 {
             db = (db + scroll.signum() * 0.5).clamp(GAIN_MIN_DB, GAIN_MAX_DB);
         }
     }
-    let resp = resp.on_hover_text("Drag or scroll to change. Double-click for 0 dB (unity).");
+    focus_ring(
+        ui,
+        &resp,
+        Rect::from_center_size(
+            pos2(track_x, (top + bottom) / 2.0),
+            vec2(34.0, bottom - top),
+        ),
+        CornerRadius::same(10),
+    );
+    let resp = resp.on_hover_text(
+        "Drag or scroll to change. Double-click for 0 dB (unity).\n\
+         Keyboard: arrows nudge, Page Up/Down jump, Home = 0 dB, M mute, S solo.",
+    );
 
     let painter = ui.painter();
     painter.rect_filled(track, CornerRadius::same(4), theme::METER_BG());

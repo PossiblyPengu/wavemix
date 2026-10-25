@@ -14,11 +14,11 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::platform::windows::{CornerPreference, WindowExtWindows};
 use winit::window::{Window, WindowLevel};
 
-use super::{theme, MixerApp, Mode, SIMPLE_SIZE};
+use super::{strip, theme, MixerApp, Mode, StripOutput, SIMPLE_SIZE};
 use crate::backend::Handle;
 use crate::config::{Config, OsdPosition, View};
 use crate::hotkeys::{HotkeyAction, Hotkeys};
-use crate::model::{Command, Flow};
+use crate::model::{group_apps, Command, Flow};
 use crate::osd::layout::{flyout_plan, taskbar_edge, Area, Edge};
 use crate::osd::{MonitorInfo, Osd, OsdEvent, OsdSettings};
 use crate::tray::{Tray, TrayAction};
@@ -241,7 +241,15 @@ impl MixerApp {
         }
 
         for action in self.shell.hotkeys.poll() {
-            self.run_hotkey(action);
+            if action == HotkeyAction::ToggleWindow {
+                if self.shell.visible {
+                    self.hide(ctx);
+                } else {
+                    self.apply_mode(ctx, win.as_deref());
+                }
+            } else {
+                self.run_hotkey(action);
+            }
         }
 
         match self.shell.pending.take() {
@@ -281,35 +289,110 @@ impl MixerApp {
         }
     }
 
-    fn run_hotkey(&self, action: HotkeyAction) {
-        let snap = self.backend.snapshot();
-        let Some(d) = snap
-            .devices
-            .iter()
-            .find(|d| d.flow == Flow::Render && d.is_default)
-        else {
-            return;
-        };
+    fn run_hotkey(&mut self, action: HotkeyAction) {
         let step = self.config.volume_step as f32 / 100.0;
-        let id = d.id.clone();
-        // Even at maximum volume, where nothing changes, a keypress should show where you are.
-        if let Some(osd) = &self.shell.osd {
-            osd.poke();
+        match action {
+            HotkeyAction::VolumeUp | HotkeyAction::VolumeDown | HotkeyAction::ToggleMute => {
+                let snap = self.backend.snapshot();
+                let Some(d) = snap
+                    .devices
+                    .iter()
+                    .find(|d| d.flow == Flow::Render && d.is_default)
+                else {
+                    return;
+                };
+                let id = d.id.clone();
+                // Even at maximum volume, where nothing changes, a keypress should show where you are.
+                if let Some(osd) = &self.shell.osd {
+                    osd.poke();
+                }
+                self.backend.send(match action {
+                    HotkeyAction::VolumeUp => Command::SetDeviceVolume {
+                        id,
+                        volume: (d.volume + step).min(1.0),
+                    },
+                    HotkeyAction::VolumeDown => Command::SetDeviceVolume {
+                        id,
+                        volume: (d.volume - step).max(0.0),
+                    },
+                    _ => Command::SetDeviceMute {
+                        id,
+                        muted: !d.muted,
+                    },
+                });
+            }
+            HotkeyAction::MicMute => {
+                let snap = self.backend.snapshot();
+                let Some(mic) = snap
+                    .devices
+                    .iter()
+                    .find(|d| d.flow == Flow::Capture && d.is_default)
+                else {
+                    return;
+                };
+                self.backend.send(Command::SetDeviceMute {
+                    id: mic.id.clone(),
+                    muted: !mic.muted,
+                });
+                let name = self.config.device_alias(&mic.id).map_or_else(
+                    || strip::short_device_name(&mic.name).to_string(),
+                    str::to_string,
+                );
+                self.announce(&format!("{name} (mic)"), mic.volume, !mic.muted);
+            }
+            HotkeyAction::NextOutput | HotkeyAction::PrevOutput => {
+                if let Some(name) = self.cycle_output(action == HotkeyAction::NextOutput) {
+                    let volume = self
+                        .backend
+                        .snapshot()
+                        .devices
+                        .iter()
+                        .find(|d| d.flow == Flow::Render && d.is_default)
+                        .map_or(1.0, |d| d.volume);
+                    self.announce(&name, volume, false);
+                }
+            }
+            HotkeyAction::AppUp | HotkeyAction::AppDown | HotkeyAction::AppMute => {
+                let Some(exe) = crate::winutil::foreground_exe() else {
+                    return;
+                };
+                let snap = self.backend.snapshot();
+                let default = snap
+                    .devices
+                    .iter()
+                    .find(|d| d.flow == Flow::Render && d.is_default)
+                    .map(|d| d.id.as_str());
+                let Some(app) = group_apps(&snap.sessions, default)
+                    .into_iter()
+                    .find(|a| a.key == exe)
+                else {
+                    // The app in front isn't one with audio; say so rather than do nothing.
+                    self.announce(&format!("{exe}: no sound"), 0.0, false);
+                    return;
+                };
+                let (volume, muted) = match action {
+                    HotkeyAction::AppUp => ((app.volume + step).min(1.0), app.muted),
+                    HotkeyAction::AppDown => ((app.volume - step).max(0.0), app.muted),
+                    _ => (app.volume, !app.muted),
+                };
+                self.send_app(
+                    &app,
+                    StripOutput {
+                        volume: (action != HotkeyAction::AppMute).then_some(volume),
+                        mute: (action == HotkeyAction::AppMute).then_some(muted),
+                    },
+                );
+                self.announce(&app.name, volume, muted);
+            }
+            HotkeyAction::ToggleWindow => {}
         }
-        self.backend.send(match action {
-            HotkeyAction::VolumeUp => Command::SetDeviceVolume {
-                id,
-                volume: (d.volume + step).min(1.0),
-            },
-            HotkeyAction::VolumeDown => Command::SetDeviceVolume {
-                id,
-                volume: (d.volume - step).max(0.0),
-            },
-            HotkeyAction::ToggleMute => Command::SetDeviceMute {
-                id,
-                muted: !d.muted,
-            },
-        });
+    }
+
+    /// Show the volume bar with a custom label and level.
+    fn announce(&self, label: &str, volume: f32, muted: bool) {
+        if let Some(osd) = &self.shell.osd {
+            osd.announce(label, crate::model::percent(volume), muted);
+        }
     }
 
     /// Register the hotkeys in `config`.
