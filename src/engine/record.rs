@@ -138,6 +138,18 @@ impl Recording {
     }
 }
 
+impl Drop for Recording {
+    fn drop(&mut self) {
+        // Signal the writer thread to drain and finish the file. This covers process exit and
+        // panics: the thread calls `writer.finish()` before it returns, so the WAV header always
+        // gets the correct size even if `Recording::finish` was never called explicitly.
+        self.stop.store(true, Ordering::Release);
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

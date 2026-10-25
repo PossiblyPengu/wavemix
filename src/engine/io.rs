@@ -57,11 +57,47 @@ pub fn same_cable(input: &str, output: &str) -> bool {
         && matches!((cable_key(input), cable_key(output)), (Some(a), Some(b)) if a == b)
 }
 
+/// True when a VBAN sender (`output` device name) and receiver (`input` device name) are on the
+/// same machine (localhost) on the same port and stream — routing audio through such a pair loops
+/// it back into itself.
+fn same_vban_loopback(input: &str, output: &str) -> bool {
+    use crate::engine::vban::{IN_PREFIX, OUT_PREFIX};
+    let Some(in_rest) = input.strip_prefix(IN_PREFIX) else {
+        return false;
+    };
+    let Some(out_rest) = output.strip_prefix(OUT_PREFIX) else {
+        return false;
+    };
+    // Output format: "<stream> to <host>:<port>"
+    // Input format:  "<stream> on port <port>"  OR  "any stream on port <port>"
+    let Some((out_stream, out_addr)) = out_rest.split_once(" to ") else {
+        return false;
+    };
+    let Some((out_host, out_port)) = out_addr.rsplit_once(':') else {
+        return false;
+    };
+    // Only loopback addresses loop on the same machine.
+    if out_host != "127.0.0.1" && out_host != "localhost" && out_host != "::1" {
+        return false;
+    }
+    // Input: "any stream on port P" matches any stream on that port.
+    if in_rest == format!("any stream on port {out_port}") {
+        return true;
+    }
+    // Input: "<stream> on port P" must match both stream name and port.
+    if let Some((in_stream, in_port_part)) = in_rest.split_once(" on port ") {
+        return in_stream == out_stream && in_port_part == out_port;
+    }
+    false
+}
+
 /// True when sending a strip that listens to `input` onto the bus playing to `output` would feed
-/// the mix back into itself: either the two ends of one virtual cable, or a "what you hear"
-/// capture of the very device the bus plays to.
+/// the mix back into itself: either the two ends of one virtual cable, a "what you hear" capture
+/// of the very device the bus plays to, or a VBAN loopback on the same port and stream.
 pub fn feeds_itself(input: &str, output: &str) -> bool {
-    loopback_target(input) == Some(output) || same_cable(input, output)
+    loopback_target(input) == Some(output)
+        || same_cable(input, output)
+        || same_vban_loopback(input, output)
 }
 
 /// A running capture or playback stream. Dropping it stops the stream.
@@ -139,6 +175,22 @@ mod tests {
             !same_cable("CABLE Output", "CABLE Input"),
             "no key, no claim"
         );
+    }
+
+    #[test]
+    fn vban_loopback_on_localhost_is_a_loop() {
+        let rx = "VBAN in: MyStream on port 6980";
+        let tx = "VBAN out: MyStream to 127.0.0.1:6980";
+        assert!(feeds_itself(rx, tx));
+        // Different stream name: not a loop.
+        assert!(!feeds_itself("VBAN in: Other on port 6980", tx));
+        // Different port: not a loop.
+        assert!(!feeds_itself("VBAN in: MyStream on port 6981", tx));
+        // Remote host: not a loop.
+        assert!(!feeds_itself(rx, "VBAN out: MyStream to 192.168.1.5:6980"));
+        // "any stream" receiver catches all streams on the same port.
+        assert!(feeds_itself("VBAN in: any stream on port 6980", tx));
+        assert!(!feeds_itself("VBAN in: any stream on port 6981", tx));
     }
 
     #[test]

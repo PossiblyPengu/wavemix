@@ -2,6 +2,7 @@
 name = "wavemix"
 version = "0.16.0"
 edition = "2021"
+license = "MIT"
 description = "A per-app and per-device audio mixer for Windows, with a Voicemeeter-style console and an EarTrumpet-style tray flyout."
 
 [dependencies]

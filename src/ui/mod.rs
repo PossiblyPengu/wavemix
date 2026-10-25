@@ -702,6 +702,10 @@ impl eframe::App for MixerApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Finish any in-progress recording so the WAV header gets its correct size.
+        if self.engine.recording().is_some() {
+            self.engine.stop_recording();
+        }
         // Leave Windows playing to the speakers it had, not to a cable nobody is listening to.
         if self.config.restore_playback.is_some() {
             self.unroute_windows_audio();

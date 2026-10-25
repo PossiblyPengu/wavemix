@@ -314,22 +314,7 @@ impl MixerApp {
                         self.route_control(ui);
                     }
                     if running {
-                        self.duck_button(ui);
-                        self.chatmix_button(ui);
-                        self.record_button(ui);
-                        self.macros_menu(ui);
-                    }
-                    if running {
-                        let mut p = self.engine.params();
-                        if strip::toggle(ui, "Bypass FX", p.bypass_fx, vec2(92.0, 30.0), theme::ACCENT())
-                            .on_hover_text(
-                                "Skip every strip's gate, EQ and compressor, to hear what they are doing",
-                            )
-                            .clicked()
-                        {
-                            p.bypass_fx = !p.bypass_fx;
-                            self.commit_params(p);
-                        }
+                        self.more_menu(ui);
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         // Show or hide the per-app list beside the console, growing or shrinking
@@ -423,6 +408,42 @@ impl MixerApp {
 
     /// One button that sends everything Windows plays through the mixer (by making the virtual
     /// cable the default playback device), and puts the old device back when switched off.
+    /// "More ▾" chip: Ducking, ChatMix, Record, Macros and Bypass FX in one drop-down.
+    /// Keeps the engine bar from overflowing on a normal 1360-wide window.
+    fn more_menu(&mut self, ui: &mut Ui) {
+        let recording = self.engine.recording().is_some();
+        let p = self.engine.params();
+        let any_on = recording || p.duck.enabled || p.chatmix.enabled || p.bypass_fx;
+        let label = if any_on { "More •" } else { "More" };
+        let resp = strip::chip(ui, label, 72.0, any_on)
+            .on_hover_text("Ducking, ChatMix, Record, Macros, Bypass FX");
+        egui::Popup::menu(&resp).show(|ui| {
+            ui.set_min_width(220.0);
+            // --- Bypass FX ---
+            let mut p = self.engine.params();
+            if ui
+                .selectable_label(p.bypass_fx, "Bypass FX")
+                .on_hover_text("Skip every strip's gate, EQ and compressor")
+                .clicked()
+            {
+                p.bypass_fx = !p.bypass_fx;
+                self.commit_params(p);
+            }
+            ui.separator();
+            // Ducking and ChatMix open their own inner menus via the existing buttons.
+            self.duck_button(ui);
+            self.chatmix_button(ui);
+            ui.separator();
+            // Record controls inline.
+            self.record_button(ui);
+            // Macros.
+            if !self.config.macros.is_empty() {
+                ui.separator();
+                self.macros_menu(ui);
+            }
+        });
+    }
+
     fn route_control(&mut self, ui: &mut Ui) {
         let (routed, cable) = self.route_state();
         let Some(cable) = cable else {
