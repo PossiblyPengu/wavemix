@@ -37,7 +37,11 @@ impl MixerApp {
             {
                 let p = preset::capture(&name, snap);
                 match self.config.presets.iter_mut().find(|e| e.name == name) {
-                    Some(existing) => *existing = p,
+                    Some(existing) => {
+                        // Saving over a preset keeps what triggers it.
+                        let trigger = existing.trigger.clone();
+                        *existing = preset::Preset { trigger, ..p };
+                    }
                     None => self.config.presets.push(p),
                 }
                 self.config.save();
@@ -160,7 +164,7 @@ impl MixerApp {
         hint(
             ui,
             "Pro mode only sees sound that goes through the virtual cable. Your normal speakers \
-             are put back when the engine stops or wavemix quits.",
+             are put back when the engine stops or Wavemix quits.",
         );
         let mut routing = self.config.experimental_routing;
         if ui
@@ -412,6 +416,28 @@ impl MixerApp {
         let snap = self.backend.snapshot();
         let mut apply = None;
         let mut delete = None;
+        // What a trigger can be set to: apps seen on this PC and playback devices.
+        let apps: Vec<(String, String)> = self
+            .all_apps(&snap, true)
+            .into_iter()
+            .filter(|a| !a.key.starts_with("pid:"))
+            .map(|a| (a.key, a.name))
+            .collect();
+        let outputs: Vec<(String, String)> = snap
+            .devices
+            .iter()
+            .filter(|d| d.flow == crate::model::Flow::Render)
+            .map(|d| {
+                (
+                    d.id.clone(),
+                    self.config.device_alias(&d.id).map_or_else(
+                        || strip::short_device_name(&d.name).to_string(),
+                        str::to_string,
+                    ),
+                )
+            })
+            .collect();
+        let mut triggers: Vec<(usize, preset::Trigger)> = Vec::new();
         for (i, p) in self.config.presets.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(&p.name);
@@ -424,6 +450,58 @@ impl MixerApp {
                     }
                 });
             });
+            // When it should apply by itself.
+            let describe = |t: &preset::Trigger| match t {
+                preset::Trigger::Never => "Apply only when I choose".to_string(),
+                preset::Trigger::AppPlays(k) => format!(
+                    "When {} starts playing",
+                    apps.iter()
+                        .find(|a| &a.0 == k)
+                        .map_or(k.as_str(), |a| a.1.as_str())
+                ),
+                preset::Trigger::DeviceDefault(id) => format!(
+                    "When {} becomes the default",
+                    outputs
+                        .iter()
+                        .find(|o| &o.0 == id)
+                        .map_or("a device", |o| o.1.as_str())
+                ),
+            };
+            let mut trigger = p.trigger.clone();
+            egui::ComboBox::from_id_salt(("trigger", i))
+                .selected_text(describe(&trigger))
+                .width(260.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut trigger,
+                        preset::Trigger::Never,
+                        "Apply only when I choose",
+                    );
+                    ui.separator();
+                    for (key, name) in &apps {
+                        ui.selectable_value(
+                            &mut trigger,
+                            preset::Trigger::AppPlays(key.clone()),
+                            format!("When {name} starts playing"),
+                        );
+                    }
+                    ui.separator();
+                    for (id, name) in &outputs {
+                        ui.selectable_value(
+                            &mut trigger,
+                            preset::Trigger::DeviceDefault(id.clone()),
+                            format!("When {name} becomes the default"),
+                        );
+                    }
+                });
+            if trigger != p.trigger {
+                triggers.push((i, trigger));
+            }
+            ui.add_space(4.0);
+        }
+        for (i, t) in triggers {
+            self.config.presets[i].trigger = t;
+            self.config.save();
         }
         if let Some(i) = apply {
             for c in preset::commands(&self.config.presets[i], &snap) {
@@ -447,7 +525,11 @@ impl MixerApp {
             {
                 let p = preset::capture(&name, &snap);
                 match self.config.presets.iter_mut().find(|e| e.name == name) {
-                    Some(existing) => *existing = p,
+                    Some(existing) => {
+                        // Saving over a preset keeps what triggers it.
+                        let trigger = existing.trigger.clone();
+                        *existing = preset::Preset { trigger, ..p };
+                    }
                     None => self.config.presets.push(p),
                 }
                 self.config.save();

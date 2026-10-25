@@ -55,6 +55,8 @@ pub struct MixerApp {
     /// The page being shown (view, wizard open, settings open) and when it appeared, for its
     /// fade-in.
     shown_page: (View, bool, bool),
+    /// What was playing and which device was default last time presets' triggers were checked.
+    last_activity: Option<crate::preset::Activity>,
     /// When the output test click switches itself off.
     click_until: Option<std::time::Instant>,
     /// Update checking: the shared state, when we last asked, when the app started, and whether
@@ -166,6 +168,7 @@ impl MixerApp {
             names_migrated: false,
             theme_dirty: false,
             shown_page: (View::Compact, false, false),
+            last_activity: None,
             click_until: None,
             update: Default::default(),
             update_checked: None,
@@ -354,6 +357,33 @@ impl MixerApp {
             theme::apply(ctx);
             self.sync_osd_names();
             ctx.request_repaint();
+        }
+    }
+
+    /// Apply any preset whose trigger just happened (an app started playing, a device became the
+    /// default). The first look only records the starting point, so launching the app doesn't
+    /// fire anything.
+    fn drive_preset_triggers(&mut self) {
+        if self
+            .config
+            .presets
+            .iter()
+            .all(|p| p.trigger == crate::preset::Trigger::Never)
+        {
+            self.last_activity = None;
+            return;
+        }
+        let snap = self.backend.snapshot();
+        if snap.devices.is_empty() {
+            return;
+        }
+        let now = crate::preset::Activity::from_snapshot(&snap);
+        if let Some(before) = self.last_activity.replace(now.clone()) {
+            for i in crate::preset::fired(&self.config.presets, &before, &now) {
+                for c in crate::preset::commands(&self.config.presets[i], &snap) {
+                    self.backend.send(c);
+                }
+            }
         }
     }
 
@@ -615,6 +645,7 @@ impl eframe::App for MixerApp {
         self.route_housekeeping();
         self.follow_theme(ctx);
         self.drive_updates(ctx);
+        self.drive_preset_triggers();
         #[cfg(windows)]
         self.handle_shell(ctx, frame);
         #[cfg(not(windows))]

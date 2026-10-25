@@ -312,6 +312,7 @@ mod tests {
             name: "Call".into(),
             devices: vec![],
             apps: vec![],
+            trigger: crate::preset::Trigger::AppPlays("game".into()),
         });
         let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back.presets, c.presets);

@@ -55,8 +55,22 @@ Switch with **Simple | Pro** at the top; the window resizes to fit.
   Windows interface laid out for Windows 10 21H2 / Windows 11).
 - Make any device the Windows default.
 - Presets: save the volumes and mutes under a name and re-apply them in one click.
-- Global hotkeys for the default playback device (defaults `ctrl+alt+up`, `ctrl+alt+down`,
-  `ctrl+alt+m`; rebind in Settings).
+- **Keyboard**: global shortcuts that work with Wavemix hidden, set by pressing Record in
+  Settings: volume up/down/mute (defaults `ctrl+alt+up`, `ctrl+alt+down`, `ctrl+alt+m`), mute the
+  microphone, next/previous output (speakers, headphones, ...), volume and mute of the app in the
+  front window, and show/hide Wavemix. One button binds your keyboard's own volume keys (and
+  Ctrl + them for the front app); since Wavemix then owns those keys, Windows' own volume popup
+  doesn't appear. Inside the app everything is reachable with Tab, faders and sliders take the
+  arrow keys (Shift = fine, Ctrl = coarse), Page Up/Down, Home and End, and `M` / `S` / `E` mute,
+  solo and open the editor on the strip you're on.
+- **Updates**: Wavemix checks GitHub for a newer release and offers "Update now"; the installer
+  replaces the old version, keeps your settings, and Wavemix restarts. A checksum published beside
+  each installer is verified before it runs.
+- **Setup check** (Settings): is the virtual cable installed and enabled, is the engine on, is
+  Windows' sound routed through Wavemix, each with its fix. **Presets** can apply themselves when
+  an app starts playing or a device becomes the default. **Bypass FX** and a per-output **test
+  click** help when tuning, clip lights hold on to overloads, and light/dark/system themes and an
+  interface size are in Settings.
 - **On-screen volume bar**, the one from voicemeeter-osd. It pops out of the tray icon with a
   callout tail pointing back at it, whenever any playback device's volume or mute changes (a
   hotkey, a keyboard knob, another app). Hover keeps it up, click opens Wavemix, scroll changes the

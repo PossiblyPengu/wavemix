@@ -21,11 +21,70 @@ pub struct AppPreset {
     pub muted: bool,
 }
 
+/// What makes a preset apply by itself.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "lowercase")]
+pub enum Trigger {
+    #[default]
+    Never,
+    /// This app (its lower-case executable name) starts making sound.
+    AppPlays(String),
+    /// This playback device (its id) becomes Windows' default.
+    DeviceDefault(String),
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Preset {
     pub name: String,
     pub devices: Vec<DevicePreset>,
     pub apps: Vec<AppPreset>,
+    #[serde(default)]
+    pub trigger: Trigger,
+}
+
+/// What was going on at one moment, for noticing changes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Activity {
+    /// Lower-case executable names of apps making sound.
+    pub playing: std::collections::BTreeSet<String>,
+    pub default_device: Option<String>,
+}
+
+impl Activity {
+    pub fn from_snapshot(snap: &Snapshot) -> Self {
+        let default = snap
+            .devices
+            .iter()
+            .find(|d| d.flow == crate::model::Flow::Render && d.is_default)
+            .map(|d| d.id.clone());
+        let playing = crate::model::group_apps(&snap.sessions, default.as_deref())
+            .into_iter()
+            .filter(|a| a.active && !a.key.starts_with("pid:"))
+            .map(|a| a.key)
+            .collect();
+        Self {
+            playing,
+            default_device: default,
+        }
+    }
+}
+
+/// Which presets should apply now: those whose trigger just happened, going from `before` to
+/// `now`. A trigger fires on the change, not while the condition merely stays true.
+pub fn fired(presets: &[Preset], before: &Activity, now: &Activity) -> Vec<usize> {
+    presets
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| match &p.trigger {
+            Trigger::Never => false,
+            Trigger::AppPlays(key) => now.playing.contains(key) && !before.playing.contains(key),
+            Trigger::DeviceDefault(id) => {
+                now.default_device.as_deref() == Some(id.as_str())
+                    && before.default_device.as_deref() != Some(id.as_str())
+            }
+        })
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// Record the current state. Apps without a stable executable name (keyed by pid) are skipped,
@@ -58,6 +117,7 @@ pub fn capture(name: &str, snap: &Snapshot) -> Preset {
         name: name.to_string(),
         devices,
         apps,
+        trigger: Trigger::Never,
     }
 }
 
@@ -135,6 +195,42 @@ mod tests {
                 sess("z", "d2", "", 4, 0.2),
             ],
         }
+    }
+
+    fn preset_with(trigger: Trigger) -> Preset {
+        Preset {
+            trigger,
+            ..capture("p", &snap())
+        }
+    }
+
+    fn activity(playing: &[&str], default: Option<&str>) -> Activity {
+        Activity {
+            playing: playing.iter().map(|s| s.to_string()).collect(),
+            default_device: default.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn an_app_trigger_fires_once_when_it_starts_playing() {
+        let presets = [preset_with(Trigger::AppPlays("game".into()))];
+        let quiet = activity(&[], None);
+        let playing = activity(&["game"], None);
+        assert_eq!(fired(&presets, &quiet, &playing), vec![0]);
+        // Still playing: nothing new has happened.
+        assert!(fired(&presets, &playing, &playing).is_empty());
+        // Another app starting doesn't count.
+        assert!(fired(&presets, &quiet, &activity(&["music"], None)).is_empty());
+    }
+
+    #[test]
+    fn a_device_trigger_fires_when_it_becomes_the_default() {
+        let presets = [preset_with(Trigger::DeviceDefault("hp".into()))];
+        let on_speakers = activity(&[], Some("sp"));
+        let on_headphones = activity(&[], Some("hp"));
+        assert_eq!(fired(&presets, &on_speakers, &on_headphones), vec![0]);
+        assert!(fired(&presets, &on_headphones, &on_headphones).is_empty());
+        assert!(fired(&[preset_with(Trigger::Never)], &on_speakers, &on_headphones).is_empty());
     }
 
     #[test]
