@@ -263,6 +263,8 @@ pub fn db_fader(
     dim: bool,
 ) -> Option<f32> {
     let (rect, _) = ui.allocate_exact_size(vec2(CONSOLE_STRIP_W, height), Sense::hover());
+    // Scale, meters and knob together are a little left-heavy; nudge the group to the middle.
+    let rect = rect.translate(vec2(6.0, 0.0));
     let top = rect.top() + 8.0;
     let bottom = rect.bottom() - 8.0;
     let track_x = rect.right() - 30.0;

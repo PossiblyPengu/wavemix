@@ -878,7 +878,7 @@ fn dark() -> bool {
 /// Text and symbols: dark brown on the light card, warm white on the dark one.
 fn ink(alpha: u8) -> u32 {
     if dark() {
-        argb(alpha, 245, 240, 232)
+        argb(alpha, 238, 239, 242)
     } else {
         argb(alpha, 58, 50, 40)
     }
@@ -886,7 +886,7 @@ fn ink(alpha: u8) -> u32 {
 
 fn card_top() -> u32 {
     if dark() {
-        argb(247, 40, 34, 28)
+        argb(247, 38, 39, 44)
     } else {
         argb(250, 255, 254, 251)
     }
@@ -894,7 +894,7 @@ fn card_top() -> u32 {
 
 fn card_bottom() -> u32 {
     if dark() {
-        argb(247, 28, 23, 19)
+        argb(247, 27, 28, 32)
     } else {
         argb(250, 246, 242, 235)
     }

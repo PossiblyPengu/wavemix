@@ -43,7 +43,7 @@ fn bus_colors() -> [Color32; BUSES] {
 
 /// Height of an input strip's controls (everything except the fader), plus the panel's own
 /// title row and padding. The fader takes whatever the window has left.
-const STRIP_CHROME_H: f32 = 232.0;
+const STRIP_CHROME_H: f32 = 262.0;
 const PANEL_CHROME_H: f32 = 64.0;
 const MIN_FADER_H: f32 = 150.0;
 const MAX_FADER_H: f32 = 460.0;
@@ -62,9 +62,26 @@ fn strip_card(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         });
 }
 
-/// A titled, rounded region that groups related strips.
-fn panel(ui: &mut Ui, title: &str, subtitle: &str, min_h: f32, body: impl FnOnce(&mut Ui)) {
+/// Gap between the two console panels, and between strips inside a panel.
+const PANEL_GAP: f32 = 12.0;
+const STRIP_GAP: f32 = 6.0;
+/// Width of one strip card: the strip itself plus the card's side padding.
+const STRIP_CARD_W: f32 = CONSOLE_STRIP_W + 10.0;
+
+/// A titled, rounded region that groups related strips. It is exactly `width` wide, with the
+/// strips centred in it, so two panels side by side mirror each other.
+fn panel(
+    ui: &mut Ui,
+    title: &str,
+    subtitle: &str,
+    width: f32,
+    min_h: f32,
+    body: impl FnOnce(&mut Ui),
+) {
     theme::panel_frame().show(ui, |ui| {
+        // Frame margins are 18 a side.
+        let inner_w = (width - 36.0 - 2.0).max(STRIP_CARD_W);
+        ui.set_width(inner_w);
         ui.vertical(|ui| {
             // Panels share a height so they line up and reach the same bottom edge.
             ui.set_min_height(min_h);
@@ -77,9 +94,11 @@ fn panel(ui: &mut Ui, title: &str, subtitle: &str, min_h: f32, body: impl FnOnce
                 );
                 ui.label(RichText::new(subtitle).size(11.0).color(theme::TEXT_DIM()));
             });
-            ui.add_space(8.0);
+            ui.add_space(10.0);
             ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.spacing_mut().item_spacing.x = STRIP_GAP;
+                let used = 5.0 * STRIP_CARD_W + 4.0 * STRIP_GAP;
+                ui.add_space(((inner_w - used) / 2.0).max(0.0));
                 body(ui);
             });
         });
@@ -117,13 +136,17 @@ impl MixerApp {
             .clamp(MIN_FADER_H, MAX_FADER_H);
         let panel_h = STRIP_CHROME_H + fader_h;
 
+        // Measured out here: inside a scroll area the width is whatever the content asks for.
+        let avail_w = ui.available_width();
         egui::ScrollArea::both()
             .id_salt("pro-console")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.horizontal_top(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
-                    panel(ui, "INPUTS", "hardware and virtual", panel_h, |ui| {
+                    ui.spacing_mut().item_spacing.x = PANEL_GAP;
+                    // Two panels of exactly equal width; the strips sit centred in each.
+                    let panel_w = ((avail_w - PANEL_GAP) / 2.0).floor();
+                    panel(ui, "INPUTS", "hardware and virtual", panel_w, panel_h, |ui| {
                         for i in 0..STRIPS {
                             self.input_strip(
                                 ui,
@@ -139,6 +162,7 @@ impl MixerApp {
                         ui,
                         "OUTPUT BUSES",
                         "A = hardware, B = virtual",
+                        panel_w,
                         panel_h,
                         |ui| {
                             for b in 0..BUSES {
@@ -655,7 +679,7 @@ impl MixerApp {
             Some(n) => self.device_label(n, list.iter().map(|d| d.name.as_str())),
             None => "Select device".to_string(),
         };
-        let resp = strip::chip(ui, &text, CONSOLE_STRIP_W - 4.0, current.is_some()).on_hover_text(
+        let resp = strip::chip(ui, &text, CONSOLE_STRIP_W, current.is_some()).on_hover_text(
             current
                 .as_deref()
                 .unwrap_or("Choose a device for this slot"),
@@ -758,7 +782,7 @@ impl MixerApp {
         };
         strip_card(ui, |ui| {
             ui.set_width(CONSOLE_STRIP_W);
-            ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
+            ui.spacing_mut().item_spacing = vec2(6.0, 8.0);
             ui.horizontal(|ui| {
                 self.title_label(ui, super::Rename::Strip, i, None);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -796,13 +820,13 @@ impl MixerApp {
             // click away, under "Route" and "Tune".
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE())
+                if strip::toggle(ui, "Mute", p.mute, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::MUTE())
                     .on_hover_text("Mute")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Solo", p.solo, vec2(53.0, 28.0), theme::METER_YELLOW())
+                if strip::toggle(ui, "Solo", p.solo, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::METER_YELLOW())
                     .on_hover_text("Solo: hear only soloed strips")
                     .clicked()
                 {
@@ -820,7 +844,7 @@ impl MixerApp {
                 1..=3 => format!("To {}", sends.join(" ")),
                 n => format!("To {n} buses"),
             };
-            let route = strip::chip(ui, &summary, CONSOLE_STRIP_W - 4.0, false)
+            let route = strip::chip(ui, &summary, CONSOLE_STRIP_W, false)
                 .on_hover_text("Choose which buses this strip feeds, plus pan and mono");
             egui::Popup::menu(&route).show(|ui| {
                 ui.set_min_width(210.0);
@@ -880,7 +904,7 @@ impl MixerApp {
             // EQ, gate and compressor share one editor with tabs.
             let working = p.eq.enabled || p.gate.enabled || p.comp.enabled;
             let open = matches!(self.editing, Some((n, _)) if n == i);
-            if strip::process_button(ui, "Tune", working, open, vec2(CONSOLE_STRIP_W - 4.0, 28.0))
+            if strip::process_button(ui, "Tune", working, open, vec2(CONSOLE_STRIP_W, 28.0))
                 .on_hover_text("EQ, noise gate and compressor")
                 .clicked()
             {
@@ -902,7 +926,7 @@ impl MixerApp {
         let p = &mut params.buses[b];
         strip_card(ui, |ui| {
             ui.set_width(CONSOLE_STRIP_W);
-            ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
+            ui.spacing_mut().item_spacing = vec2(6.0, 8.0);
             ui.horizontal(|ui| {
                 self.title_label(ui, super::Rename::Bus, b, Some(bus_colors()[b]));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -946,13 +970,13 @@ impl MixerApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                if strip::toggle(ui, "Mute", p.mute, vec2(53.0, 28.0), theme::MUTE())
+                if strip::toggle(ui, "Mute", p.mute, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::MUTE())
                     .on_hover_text("Mute this bus")
                     .clicked()
                 {
                     p.mute = !p.mute;
                 }
-                if strip::toggle(ui, "Limit", p.limiter, vec2(53.0, 28.0), theme::METER_GREEN())
+                if strip::toggle(ui, "Limit", p.limiter, vec2((CONSOLE_STRIP_W - 6.0) / 2.0, 28.0), theme::METER_GREEN())
                     .on_hover_text("Limiter: stops the summed mix from clipping")
                     .clicked()
                 {
@@ -964,7 +988,7 @@ impl MixerApp {
             } else {
                 "No delay".to_string()
             };
-            let delay = strip::chip(ui, &delay_text, CONSOLE_STRIP_W - 4.0, p.delay_ms > 0.0)
+            let delay = strip::chip(ui, &delay_text, CONSOLE_STRIP_W, p.delay_ms > 0.0)
                 .on_hover_text(
                     "Hold this output back so it lines up with a slower one, for example wired speakers waiting for Bluetooth headphones",
                 );
@@ -978,6 +1002,8 @@ impl MixerApp {
                         .suffix(" ms"),
                 );
             });
+            // Inputs have a Tune button here; keep the bottoms of both panels level.
+            ui.add_space(28.0);
         });
     }
 

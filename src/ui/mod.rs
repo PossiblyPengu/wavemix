@@ -24,7 +24,7 @@ mod theme;
 use strip::StripOutput;
 
 /// Pro mode: the full console.
-const PRO_SIZE: [f32; 2] = [1440.0, 860.0];
+const PRO_SIZE: [f32; 2] = [1424.0, 860.0];
 /// Simple mode: a small volume control.
 const SIMPLE_SIZE: [f32; 2] = [370.0, 560.0];
 /// The flyout is as tall as its content, within these limits (points).
