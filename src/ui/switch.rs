@@ -110,7 +110,7 @@ impl MixerApp {
                     ui.horizontal(|ui| buttons(ui));
                 }
             });
-        ui.add_space(8.0);
+        ui.add_space(12.0);
     }
 
     /// The switch page inside the small Simple window.

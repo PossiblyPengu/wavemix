@@ -1091,8 +1091,8 @@ fn eq_editor(ui: &mut Ui, p: &mut EqParams) {
     });
     ui.add_space(4.0);
 
-    let width = ui.available_width().min(680.0);
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 170.0), Sense::click_and_drag());
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 190.0), Sense::click_and_drag());
     let painter = ui.painter();
     painter.rect_filled(rect, 8.0, theme::METER_BG());
     for hz in [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0] {

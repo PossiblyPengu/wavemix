@@ -41,7 +41,7 @@ impl MixerApp {
         };
 
         self.device_card(ui, &outputs, &dev);
-        ui.add_space(8.0);
+        ui.add_space(12.0);
         self.output_switch(ui);
         ui.add_space(12.0);
         self.app_list(ui, snap, false);

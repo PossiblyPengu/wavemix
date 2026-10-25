@@ -475,29 +475,41 @@ impl MixerApp {
 
     // --- chrome --------------------------------------------------------------------------------
 
+    /// Logo on the left, the Simple | Pro switch dead centre, and the actions on the right, so
+    /// the bar balances whatever width the window is.
     fn top_bar(&mut self, ui: &mut Ui, snap: &Snapshot) {
+        const BAR_H: f32 = 34.0;
+        const SWITCH_W: f32 = 140.0; // strip::segmented with two options
         let pro = self.view() == View::Console;
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            let (mark, _) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::hover());
-            ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT());
-            ui.painter().circle_filled(mark.center(), 3.0, theme::CARD());
-            ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT()));
-            if self.demo && pro {
-                ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM()))
-                    .on_hover_text("Showing fake devices and apps");
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let ctx = ui.ctx().clone();
-                if strip::ghost_button(ui, "Settings", self.show_settings).clicked() {
-                    self.show_settings = !self.show_settings;
+        let ctx = ui.ctx().clone();
+        let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), egui::Sense::hover());
+        let mid = bar.center().x;
+        let left = egui::Rect::from_min_max(bar.min, egui::pos2(mid - SWITCH_W / 2.0, bar.max.y));
+        let centre = egui::Rect::from_center_size(bar.center(), vec2(SWITCH_W, BAR_H));
+        let right = egui::Rect::from_min_max(egui::pos2(mid + SWITCH_W / 2.0, bar.min.y), bar.max);
+
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(left)
+                .layout(Layout::left_to_right(Align::Center)),
+            |ui| {
+                ui.add_space(4.0);
+                let (mark, _) = ui.allocate_exact_size(vec2(18.0, 18.0), egui::Sense::hover());
+                ui.painter().circle_filled(mark.center(), 8.0, theme::ACCENT());
+                ui.painter().circle_filled(mark.center(), 3.0, theme::CARD());
+                ui.label(RichText::new("wavemix").size(17.0).strong().color(theme::TEXT()));
+                if self.demo && pro {
+                    ui.label(RichText::new("demo").size(11.0).color(theme::TEXT_DIM()))
+                        .on_hover_text("Showing fake devices and apps");
                 }
-                if pro {
-                    self.presets_menu(ui, snap);
-                }
-                ui.add_space(8.0);
+            },
+        );
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(centre)
+                .layout(Layout::left_to_right(Align::Center)),
+            |ui| {
                 // Reads left to right as: Simple | Pro.
-                let selected = usize::from(pro);
                 if let Some(i) = strip::segmented(
                     ui,
                     wid("view-switch"),
@@ -505,12 +517,25 @@ impl MixerApp {
                         ("Simple", "A small volume control, like the Windows volume popup"),
                         ("Pro", "Mixing console: inputs, buses, EQ, gate and compressor"),
                     ],
-                    selected,
+                    usize::from(pro),
                 ) {
                     self.set_view(&ctx, if i == 1 { View::Console } else { View::Compact });
                 }
-            });
-        });
+            },
+        );
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(right)
+                .layout(Layout::right_to_left(Align::Center)),
+            |ui| {
+                if strip::ghost_button(ui, "Settings", self.show_settings).clicked() {
+                    self.show_settings = !self.show_settings;
+                }
+                if pro {
+                    self.presets_menu(ui, snap);
+                }
+            },
+        );
     }
 
     /// Pro mode's per-app list: send a program to a cable here to bring it into the mixer.
@@ -561,7 +586,7 @@ impl eframe::App for MixerApp {
             .show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
                 self.top_bar(ui, &snap);
-                ui.add_space(8.0);
+                ui.add_space(12.0);
                 if self.offer_switch() {
                     self.switch_banner(ui);
                 }

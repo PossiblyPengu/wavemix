@@ -373,9 +373,11 @@ impl MixerApp {
 }
 
 fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(10.0);
-    ui.label(RichText::new(title).size(14.0).strong());
+    ui.add_space(16.0);
+    ui.label(RichText::new(title).size(15.0).strong());
+    ui.add_space(2.0);
     ui.separator();
+    ui.add_space(4.0);
 }
 
 fn hint(ui: &mut Ui, text: &str) {
