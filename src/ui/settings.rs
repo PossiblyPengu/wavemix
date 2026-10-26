@@ -7,7 +7,7 @@ use super::{strip, theme, MixerApp};
 use crate::config::OsdPosition;
 use crate::config::ThemeMode;
 use crate::model::Snapshot;
-use crate::preset;
+use crate::preset::{self, capture_with_buses};
 
 impl MixerApp {
     pub(super) fn presets_menu(&mut self, ui: &mut Ui, snap: &Snapshot) {
@@ -17,7 +17,21 @@ impl MixerApp {
             }
             let mut apply = None;
             for (i, p) in self.config.presets.iter().enumerate() {
-                if ui.button(&p.name).clicked() {
+                let has_buses = !p.buses.is_empty();
+                let label = if has_buses {
+                    format!("{} [EQ]", p.name)
+                } else {
+                    p.name.clone()
+                };
+                if ui
+                    .button(label)
+                    .on_hover_text(if has_buses {
+                        "Includes bus EQ and compressor settings"
+                    } else {
+                        "Volumes and mutes only"
+                    })
+                    .clicked()
+                {
                     apply = Some(i);
                     ui.close();
                 }
@@ -26,19 +40,41 @@ impl MixerApp {
                 for c in preset::commands(&self.config.presets[i], snap) {
                     self.backend.send(c);
                 }
+                // Apply bus EQ/compressor settings if the preset includes them.
+                if !self.config.presets[i].buses.is_empty() {
+                    let mut params = self.engine.params();
+                    for bp in &self.config.presets[i].buses {
+                        if bp.bus < crate::engine::params::BUSES {
+                            params.buses[bp.bus] = bp.params;
+                        }
+                    }
+                    self.commit_params(params);
+                }
             }
             ui.separator();
             ui.label(RichText::new("Save current volumes as").size(11.0));
             ui.text_edit_singleline(&mut self.preset_name);
+            // Option to include bus EQ.
+            let include_id = egui::Id::new("preset-include-buses");
+            let mut include_buses: bool = ui.data(|d| d.get_temp(include_id).unwrap_or(false));
+            ui.checkbox(&mut include_buses, "Include bus EQ and compressor")
+                .on_hover_text(
+                    "Save this bus's equalizer and compressor settings in the preset",
+                );
+            ui.data_mut(|d| d.insert_temp(include_id, include_buses));
             let name = self.preset_name.trim().to_string();
             if ui
                 .add_enabled(!name.is_empty(), egui::Button::new("Save"))
                 .clicked()
             {
-                let p = preset::capture(&name, snap);
+                let engine_params = self.engine.params();
+                let p = if include_buses {
+                    capture_with_buses(&name, snap, Some(&engine_params))
+                } else {
+                    preset::capture(&name, snap)
+                };
                 match self.config.presets.iter_mut().find(|e| e.name == name) {
                     Some(existing) => {
-                        // Saving over a preset keeps what triggers it.
                         let trigger = existing.trigger.clone();
                         *existing = preset::Preset { trigger, ..p };
                     }

@@ -102,7 +102,7 @@ pub struct Stats {
 }
 
 enum IoCmd {
-    Record(Option<(usize, HeapProd<f32>)>),
+    Record(usize, Option<HeapProd<f32>>),
     SetInput(usize, Option<String>),
     SetOutput(usize, Option<String>),
     SetRunning(bool),
@@ -114,15 +114,15 @@ enum IoCmd {
 enum MixMsg {
     Feed(usize, Option<RateReader>),
     Sink(usize, Option<HeapProd<f32>>),
-    /// Start (or stop) copying a bus to a recording.
-    Record(Option<(usize, HeapProd<f32>)>),
+    /// Start (or stop) copying bus `b` to a recording.
+    Record(usize, Option<HeapProd<f32>>),
 }
 
 pub struct Engine {
     shared: Arc<Shared>,
     io_tx: Sender<IoCmd>,
     shutdown: Arc<AtomicBool>,
-    recording: Mutex<Option<super::record::Recording>>,
+    recording: Mutex<Vec<super::record::Recording>>,
 }
 
 impl Engine {
@@ -168,7 +168,7 @@ impl Engine {
             shared,
             io_tx,
             shutdown,
-            recording: Mutex::new(None),
+            recording: Mutex::new(Vec::new()),
         }
     }
 
@@ -225,29 +225,53 @@ impl Engine {
         let _ = self.io_tx.send(IoCmd::SetOutput(bus, device));
     }
 
-    /// Start recording `bus` to `path` (a WAV file). Replaces any recording already running.
+    /// Start recording `bus` to `path` (a WAV file). Replaces any existing recording on that bus.
     pub fn start_recording(&self, bus: usize, path: std::path::PathBuf) -> Result<(), String> {
-        let _ = self.stop_recording();
+        let _ = self.stop_bus_recording(bus);
         let (rec, prod) =
             super::record::Recording::start(bus.min(BUSES - 1), path).map_err(|e| e.to_string())?;
-        let _ = self.io_tx.send(IoCmd::Record(Some((rec.bus, prod))));
-        *lock(&self.recording) = Some(rec);
+        let _ = self.io_tx.send(IoCmd::Record(rec.bus, Some(prod)));
+        lock(&self.recording).push(rec);
         Ok(())
     }
 
-    /// Stop the recording, if any. Returns where it was saved and how long it ran.
-    pub fn stop_recording(&self) -> Option<(std::path::PathBuf, f64)> {
-        let rec = lock(&self.recording).take()?;
-        let _ = self.io_tx.send(IoCmd::Record(None));
+    /// Stop the recording on `bus`, if any. Returns where it was saved and how long it ran.
+    pub fn stop_bus_recording(&self, bus: usize) -> Option<(std::path::PathBuf, f64)> {
+        let mut recs = lock(&self.recording);
+        let pos = recs.iter().position(|r| r.bus == bus)?;
+        let rec = recs.remove(pos);
+        let _ = self.io_tx.send(IoCmd::Record(bus, None));
         let path = rec.path.clone();
         rec.finish().ok().map(|secs| (path, secs))
     }
 
-    /// The bus being recorded, where, and for how many seconds so far.
+    /// Stop all recordings. Returns the first one's save path and duration (for backward compat).
+    pub fn stop_recording(&self) -> Option<(std::path::PathBuf, f64)> {
+        let buses: Vec<usize> = lock(&self.recording).iter().map(|r| r.bus).collect();
+        buses.into_iter().filter_map(|b| self.stop_bus_recording(b)).next()
+    }
+
+    /// Any running recording (the first one). Returns (bus, path, seconds).
     pub fn recording(&self) -> Option<(usize, std::path::PathBuf, f64)> {
         lock(&self.recording)
-            .as_ref()
+            .first()
             .map(|r| (r.bus, r.path.clone(), r.seconds()))
+    }
+
+    /// The recording for a specific bus, if active. Returns (path, seconds).
+    pub fn recording_for_bus(&self, bus: usize) -> Option<(std::path::PathBuf, f64)> {
+        lock(&self.recording)
+            .iter()
+            .find(|r| r.bus == bus)
+            .map(|r| (r.path.clone(), r.seconds()))
+    }
+
+    /// All active recordings: (bus, path, seconds).
+    pub fn all_recordings(&self) -> Vec<(usize, std::path::PathBuf, f64)> {
+        lock(&self.recording)
+            .iter()
+            .map(|r| (r.bus, r.path.clone(), r.seconds()))
+            .collect()
     }
 
     pub fn set_test_click(&self, on: bool) {
@@ -317,14 +341,14 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
     let mut next = Instant::now();
     let mut cpu = 0.0f32;
     let mut blocks = 0u64;
-    let mut recording: Option<(usize, HeapProd<f32>)> = None;
+    let mut recordings: [Option<HeapProd<f32>>; BUSES] = std::array::from_fn(|_| None);
 
     while !shutdown.load(Ordering::Relaxed) {
         while let Ok(msg) = rx.try_recv() {
             match msg {
                 MixMsg::Feed(i, f) => feeds[i] = f,
                 MixMsg::Sink(b, s) => sinks[b] = s,
-                MixMsg::Record(r) => recording = r,
+                MixMsg::Record(bus, prod) => recordings[bus] = prod,
             }
         }
         if !shared.running.load(Ordering::Relaxed) {
@@ -365,8 +389,10 @@ fn mix_thread(shared: Arc<Shared>, rx: Receiver<MixMsg>, shutdown: Arc<AtomicBoo
                 }
             }
         }
-        if let Some((bus, prod)) = &mut recording {
-            write_frames(prod, &outs[*bus]);
+        for (b, prod_opt) in recordings.iter_mut().enumerate() {
+            if let Some(prod) = prod_opt {
+                write_frames(prod, &outs[b]);
+            }
         }
         blocks = blocks.wrapping_add(1);
         for b in 0..BUSES {
@@ -464,8 +490,8 @@ fn io_thread(
                     st.close_all();
                 }
             }
-            Ok(IoCmd::Record(r)) => {
-                let _ = st.mix_tx.send(MixMsg::Record(r));
+            Ok(IoCmd::Record(bus, prod)) => {
+                let _ = st.mix_tx.send(MixMsg::Record(bus, prod));
             }
             Ok(IoCmd::Refresh) => last_refresh = Instant::now() - DEVICE_REFRESH,
             Err(RecvTimeoutError::Timeout) => {}
@@ -774,7 +800,7 @@ mod tests {
         engine.start_recording(0, path.clone()).unwrap();
         assert!(engine.recording().is_some());
         thread::sleep(Duration::from_millis(800));
-        let (saved, secs) = engine.stop_recording().expect("a recording was running");
+        let (saved, secs) = engine.stop_bus_recording(0).expect("a recording was running");
         assert!(engine.recording().is_none());
         assert_eq!(saved, path);
         let size = std::fs::metadata(&path).unwrap().len();

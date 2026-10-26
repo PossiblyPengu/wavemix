@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::params::{BusParams, EngineParams, BUSES};
 use crate::model::{group_sessions, Command, Snapshot};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -33,6 +34,13 @@ pub enum Trigger {
     DeviceDefault(String),
 }
 
+/// Saved bus processing settings (EQ + compressor) included in a preset.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BusPreset {
+    pub bus: usize,
+    pub params: BusParams,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Preset {
     pub name: String,
@@ -40,6 +48,9 @@ pub struct Preset {
     pub apps: Vec<AppPreset>,
     #[serde(default)]
     pub trigger: Trigger,
+    /// Bus EQ and compressor settings, if this preset includes them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<BusPreset>,
 }
 
 /// What was going on at one moment, for noticing changes.
@@ -90,6 +101,11 @@ pub fn fired(presets: &[Preset], before: &Activity, now: &Activity) -> Vec<usize
 /// Record the current state. Apps without a stable executable name (keyed by pid) are skipped,
 /// since a pid means nothing next time.
 pub fn capture(name: &str, snap: &Snapshot) -> Preset {
+    capture_with_buses(name, snap, None)
+}
+
+/// Like `capture`, but also saves the current bus EQ and compressor settings when provided.
+pub fn capture_with_buses(name: &str, snap: &Snapshot, engine: Option<&EngineParams>) -> Preset {
     let devices = snap
         .devices
         .iter()
@@ -113,11 +129,22 @@ pub fn capture(name: &str, snap: &Snapshot) -> Preset {
             });
         }
     }
+    let buses = engine
+        .map(|e| {
+            (0..BUSES)
+                .map(|b| BusPreset {
+                    bus: b,
+                    params: e.buses[b],
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Preset {
         name: name.to_string(),
         devices,
         apps,
         trigger: Trigger::Never,
+        buses,
     }
 }
 

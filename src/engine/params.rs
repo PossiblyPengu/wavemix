@@ -287,6 +287,8 @@ pub struct BusParams {
     pub limiter_ceiling_db: f32,
     /// Equaliser across the whole output, before the limiter.
     pub eq: ParamEqParams,
+    /// Bus-wide compressor, applied after EQ and before the limiter.
+    pub comp: CompParams,
     /// Mix a little of each side into the other, as speakers do, so headphones sound less
     /// "inside the head" (0 = off, 1 = a lot).
     pub crossfeed: f32,
@@ -305,6 +307,7 @@ impl Default for BusParams {
             limiter: true,
             limiter_ceiling_db: -0.5,
             eq: ParamEqParams::default(),
+            comp: CompParams::default(),
             crossfeed: 0.0,
             width: 1.0,
             delay_ms: 0.0,

@@ -155,6 +155,12 @@ impl MixerApp {
             bypass_fx: bypass,
             ..before
         };
+        // Signal-flow routing matrix (shown when toggled on).
+        let flow_id = egui::Id::new("show-signal-flow");
+        if ui.data(|d| d.get_temp::<bool>(flow_id).unwrap_or(false)) {
+            ui.add_space(6.0);
+            self.signal_flow(ui, &params);
+        }
         ui.add_space(8.0);
 
         // Use the whole window: the faders take the height left over once the controls and (if
@@ -317,6 +323,16 @@ impl MixerApp {
                         self.more_menu(ui);
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        // Signal-flow toggle: a routing matrix below the bar.
+                        let flow_id = egui::Id::new("show-signal-flow");
+                        let flow_on: bool = ui.data(|d| d.get_temp(flow_id).unwrap_or(false));
+                        if strip::toggle(ui, "Signal flow", flow_on, vec2(88.0, 26.0), theme::ACCENT())
+                            .on_hover_text("Show a routing matrix: which inputs feed which outputs")
+                            .clicked()
+                        {
+                            ui.data_mut(|d| d.insert_temp(flow_id, !flow_on));
+                        }
+                        ui.add_space(8.0);
                         // Show or hide the per-app list beside the console, growing or shrinking
                         // the window by its width so the console keeps its room.
                         let on = self.config.pro_apps_panel;
@@ -1252,16 +1268,224 @@ impl MixerApp {
                         .suffix(" ms"),
                 );
             });
+            // Per-bus record chip: shows recording state, starts/stops this bus.
+            let rec = self.engine.recording_for_bus(b);
+            let rec_label = match &rec {
+                Some((_, secs)) => {
+                    // Refresh every quarter second while recording.
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(250));
+                    format!("● {}", super::tools::format_clock(*secs))
+                }
+                None => String::new(),
+            };
+            if !rec_label.is_empty() {
+                if strip::toggle(
+                    ui,
+                    &rec_label,
+                    true,
+                    vec2(CONSOLE_STRIP_W, 26.0),
+                    theme::MUTE(),
+                )
+                .on_hover_text("Recording — click to stop")
+                .clicked()
+                {
+                    self.set_recording(false, Some(b));
+                }
+            } else if ui
+                .add_enabled(
+                    self.engine.is_running(),
+                    egui::Button::new(RichText::new("Record").size(11.5))
+                        .min_size(vec2(CONSOLE_STRIP_W, 26.0)),
+                )
+                .on_hover_text("Record this bus to a WAV file")
+                .clicked()
+            {
+                self.set_recording(true, Some(b));
+            }
             // The bus equaliser; also keeps the bottoms of both panels level.
             let open = self.bus_editing == Some(b);
-            if strip::process_button(ui, "EQ", p.eq.enabled, open, vec2(CONSOLE_STRIP_W, 28.0))
-                .on_hover_text("Six-band equalizer for this whole output")
+            if strip::process_button(ui, "EQ + Comp", p.eq.enabled || p.comp.enabled, open, vec2(CONSOLE_STRIP_W, 28.0))
+                .on_hover_text("Six-band equalizer and compressor for this whole output")
                 .clicked()
             {
                 self.bus_editing = if open { None } else { Some(b) };
                 self.editing = None;
             }
         });
+    }
+
+    // --- signal flow routing matrix ------------------------------------------------------------
+
+    fn signal_flow(&self, ui: &mut Ui, params: &EngineParams) {
+        let bus_colors = bus_colors();
+        let levels = self.engine.levels();
+        egui::Frame::new()
+            .fill(theme::PANEL())
+            .stroke(egui::Stroke::new(1.0, theme::BORDER()))
+            .corner_radius(theme::R_PANEL)
+            .inner_margin(egui::Margin::symmetric(14, 8))
+            .show(ui, |ui| {
+                let cell = 36.0;
+                let label_w = 90.0;
+                let total_w = label_w + (BUSES as f32) * cell + 80.0;
+                ui.set_min_width(total_w);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("SIGNAL FLOW")
+                            .size(11.0)
+                            .strong()
+                            .color(theme::TEXT_DIM()),
+                    );
+                    ui.add_space(12.0);
+                    ui.label(
+                        egui::RichText::new("● = sends to bus   size = signal level   dim = muted")
+                            .size(10.0)
+                            .color(theme::TEXT_DIM()),
+                    );
+                });
+                ui.add_space(4.0);
+                // Header row: bus names.
+                ui.horizontal(|ui| {
+                    ui.add_space(label_w);
+                    for b in 0..BUSES {
+                        let col = bus_colors[b];
+                        ui.add_sized(
+                            vec2(cell, 18.0),
+                            egui::Label::new(
+                                egui::RichText::new(bus_name(b))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(col),
+                            ),
+                        );
+                    }
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Level").size(10.0).color(theme::TEXT_DIM()));
+                });
+                // One row per strip.
+                for i in 0..STRIPS {
+                    let sp = &params.strips[i];
+                    let is_virtual = i >= HARDWARE_STRIPS;
+                    let strip_color = if is_virtual {
+                        theme::ACCENT_IN()
+                    } else {
+                        theme::ACCENT()
+                    };
+                    let any_solo = params.strips.iter().any(|s| s.solo);
+                    let audible = !sp.mute && !(any_solo && !sp.solo);
+                    let dim = if audible { 1.0 } else { 0.35 };
+                    ui.horizontal(|ui| {
+                        // Strip name, left-aligned and truncated.
+                        let name = self.config.strip_title(i);
+                        let name = strip::truncate(ui, &name, label_w - 8.0, 11.5);
+                        ui.add_sized(
+                            vec2(label_w, 22.0),
+                            egui::Label::new(
+                                egui::RichText::new(name)
+                                    .size(11.5)
+                                    .color(strip_color.gamma_multiply(dim)),
+                            ),
+                        );
+                        // Send dots for each bus.
+                        for b in 0..BUSES {
+                            let sends = sp.sends[b];
+                            let bus_peak = if sends {
+                                let sp = self.engine.levels().strip(i);
+                                sp[0].max(sp[1])
+                            } else {
+                                0.0
+                            };
+                            let (rect, resp) =
+                                ui.allocate_exact_size(vec2(cell, 22.0), Sense::hover());
+                            let center = rect.center();
+                            if sends {
+                                let r = (4.0 + bus_peak * 8.0).min(10.0) * dim;
+                                ui.painter().circle_filled(
+                                    center,
+                                    r,
+                                    bus_colors[b].gamma_multiply(dim),
+                                );
+                            } else {
+                                ui.painter().circle_stroke(
+                                    center,
+                                    3.5,
+                                    egui::Stroke::new(1.0, theme::BORDER()),
+                                );
+                            }
+                            let tip = if sends {
+                                format!(
+                                    "{} → {}",
+                                    self.config.strip_title(i),
+                                    bus_name(b)
+                                )
+                            } else {
+                                format!(
+                                    "{} does not send to {}",
+                                    self.config.strip_title(i),
+                                    bus_name(b)
+                                )
+                            };
+                            resp.on_hover_text(tip);
+                        }
+                        // Strip level mini-meter.
+                        ui.add_space(8.0);
+                        let peaks = levels.strip(i);
+                        let peak = peaks[0].max(peaks[1]);
+                        let (rect, _) =
+                            ui.allocate_exact_size(vec2(64.0, 8.0), Sense::hover());
+                        ui.painter().rect_filled(rect, 2.0, theme::METER_BG());
+                        let fill_w = (peak.min(1.0) * rect.width() * dim) as f32;
+                        if fill_w > 0.0 {
+                            let fill = egui::Rect::from_min_size(rect.min, vec2(fill_w, rect.height()));
+                            let color = if peak > 0.9 {
+                                theme::MUTE()
+                            } else {
+                                strip_color.gamma_multiply(dim)
+                            };
+                            ui.painter().rect_filled(fill, 2.0, color);
+                        }
+                    });
+                }
+                // Bus output row.
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add_sized(
+                        vec2(label_w, 22.0),
+                        egui::Label::new(
+                            egui::RichText::new("Bus out")
+                                .size(10.0)
+                                .color(theme::TEXT_DIM()),
+                        ),
+                    );
+                    for b in 0..BUSES {
+                        let bp = &params.buses[b];
+                        let peak = {
+                            let l = levels.bus(b);
+                            l[0].max(l[1])
+                        };
+                        let dim = if bp.mute { 0.3 } else { 1.0 };
+                        let (rect, resp) =
+                            ui.allocate_exact_size(vec2(cell, 22.0), Sense::hover());
+                        let bar_h = (rect.height() * (peak * dim).min(1.0)) as f32;
+                        let fill = egui::Rect::from_min_size(
+                            egui::pos2(rect.center().x - 6.0, rect.bottom() - bar_h),
+                            vec2(12.0, bar_h),
+                        );
+                        ui.painter().rect_filled(
+                            fill,
+                            2.0,
+                            bus_colors[b].gamma_multiply(dim),
+                        );
+                        resp.on_hover_text(format!(
+                            "{}: {:.1} dB{}",
+                            bus_name(b),
+                            params.buses[b].gain_db,
+                            if bp.mute { " (muted)" } else { "" }
+                        ));
+                    }
+                });
+            });
     }
 
     // --- processing editor ---------------------------------------------------------------------

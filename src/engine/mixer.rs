@@ -14,6 +14,7 @@ pub struct Levels {
     strips: [[AtomicU32; 2]; STRIPS],
     buses: [[AtomicU32; 2]; BUSES],
     comp_gr: [AtomicU32; STRIPS],
+    bus_comp_gr: [AtomicU32; BUSES],
     gate_open: [AtomicBool; STRIPS],
 }
 
@@ -40,6 +41,11 @@ impl Levels {
         load(&self.comp_gr[i])
     }
 
+    /// Bus compressor gain reduction of bus `b` in dB (<= 0).
+    pub fn bus_comp_gain_reduction_db(&self, b: usize) -> f32 {
+        load(&self.bus_comp_gr[b])
+    }
+
     pub fn gate_open(&self, i: usize) -> bool {
         self.gate_open[i].load(Ordering::Relaxed)
     }
@@ -58,6 +64,7 @@ struct StripDsp {
 
 struct BusDsp {
     eq: ParamEq,
+    comp: Compressor,
     spatial: Spatial,
     limiter: Limiter,
     gain: f32,
@@ -131,6 +138,7 @@ impl Mixer {
             buses: (0..BUSES)
                 .map(|_| BusDsp {
                     eq: ParamEq::new(sample_rate),
+                    comp: Compressor::new(sample_rate),
                     spatial: Spatial::new(sample_rate),
                     limiter: Limiter::new(sample_rate),
                     gain: 0.0,
@@ -234,6 +242,7 @@ impl Mixer {
             let target = if p.mute { 0.0 } else { db_to_gain(p.gain_db) };
             ramp_gain(buf, &mut dsp.gain, target);
             dsp.eq.process(&p.eq, buf);
+            dsp.comp.process(&p.comp, buf);
             dsp.spatial.process(p.crossfeed, p.width, buf);
             if p.limiter {
                 dsp.limiter.process(p.limiter_ceiling_db, buf);
@@ -242,6 +251,7 @@ impl Mixer {
             let peaks = peak_of(buf);
             store(&levels.buses[b][0], peaks[0]);
             store(&levels.buses[b][1], peaks[1]);
+            store(&levels.bus_comp_gr[b], dsp.comp.gain_reduction_db());
         }
     }
 }

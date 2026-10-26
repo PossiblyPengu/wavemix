@@ -1,11 +1,14 @@
-//! The bus equaliser editor and the ducking controls.
+//! The bus equaliser editor, compressor, ducking controls, and AutoEQ loader.
 
 use eframe::egui::{self, pos2, vec2, Align, Color32, Layout, RichText, Sense, Stroke, Ui};
 
 use super::console::{db_to_y, hz_to_x, x_to_hz, y_to_db, EQ_DB_RANGE};
 use super::{strip, theme, MixerApp};
+use crate::engine::autoeq;
 use crate::engine::dsp::param_eq_response_db;
-use crate::engine::params::{BandKind, ParamEqParams, BUS_EQ_BANDS, HARDWARE_STRIPS, STRIPS};
+use crate::engine::params::{
+    BandKind, BusParams, CompParams, ParamEqParams, BUS_EQ_BANDS, BUSES, HARDWARE_STRIPS, STRIPS,
+};
 use crate::engine::runtime::ENGINE_RATE;
 
 /// Where a band's handle sits: its frequency, and its gain (filters that only cut sit on 0 dB).
@@ -185,6 +188,138 @@ fn bus_eq_editor(ui: &mut Ui, p: &mut ParamEqParams, selected: &mut usize, accen
     });
 }
 
+/// Bus-wide compressor section in the bus editor.
+fn bus_comp_editor(ui: &mut Ui, c: &mut CompParams, gain_reduction_db: f32) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Compressor").strong());
+        ui.checkbox(&mut c.enabled, "Enable");
+        if c.enabled {
+            ui.label(
+                RichText::new(format!("reducing {:.1} dB", -gain_reduction_db))
+                    .size(12.0)
+                    .color(theme::TEXT_DIM()),
+            );
+        }
+    });
+    if !c.enabled {
+        return;
+    }
+    ui.label(
+        RichText::new(
+            "Evens out the summed mix: anything above the threshold is turned down by the ratio.",
+        )
+        .size(11.0)
+        .color(theme::TEXT_DIM()),
+    );
+    // Gain-reduction meter: grows to the left from zero.
+    let (rect, _) = ui.allocate_exact_size(vec2(260.0, 10.0), Sense::hover());
+    ui.painter().rect_filled(rect, 4.0, theme::METER_BG());
+    let frac = (-gain_reduction_db / 24.0).clamp(0.0, 1.0);
+    let fill = egui::Rect::from_min_max(
+        egui::pos2(rect.right() - rect.width() * frac, rect.top()),
+        rect.max,
+    );
+    ui.painter().rect_filled(fill, 4.0, theme::METER_YELLOW());
+    ui.add_space(4.0);
+    ui.add(
+        egui::Slider::new(&mut c.threshold_db, -60.0..=0.0)
+            .text("Threshold")
+            .suffix(" dB"),
+    );
+    ui.add(
+        egui::Slider::new(&mut c.ratio, 1.0..=20.0)
+            .text("Ratio")
+            .suffix(" : 1"),
+    );
+    ui.add(
+        egui::Slider::new(&mut c.attack_ms, 0.5..=100.0)
+            .logarithmic(true)
+            .text("Attack")
+            .suffix(" ms"),
+    );
+    ui.add(
+        egui::Slider::new(&mut c.release_ms, 10.0..=1000.0)
+            .logarithmic(true)
+            .text("Release")
+            .suffix(" ms"),
+    );
+    ui.add(
+        egui::Slider::new(&mut c.makeup_db, 0.0..=24.0)
+            .text("Make-up gain")
+            .suffix(" dB"),
+    );
+}
+
+/// AutoEQ profile loader: paste text or type a file path.
+fn autoeq_section(ui: &mut Ui, b: usize, p: &mut BusParams) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("AutoEQ").strong());
+        ui.label(
+            RichText::new(
+                "Load a headphone EQ profile from AutoEQ (autoeq.app or headphonedb.com).",
+            )
+            .size(11.0)
+            .color(theme::TEXT_DIM()),
+        );
+    });
+    let path_id = egui::Id::new(("autoeq-path", b));
+    let mut path: String = ui.data(|d| d.get_temp(path_id).unwrap_or_default());
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut path)
+                .hint_text("Path to ParametricEQ.txt …")
+                .desired_width(300.0),
+        );
+        if ui
+            .button("Load")
+            .on_hover_text(
+                "Read the file and apply its filters to this bus's equalizer",
+            )
+            .clicked()
+            && !path.is_empty()
+        {
+            match std::fs::read_to_string(&path) {
+                Ok(text) => match autoeq::parse(&text) {
+                    Ok((preamp_db, eq)) => {
+                        p.eq = eq;
+                        ui.data_mut(|d| d.insert_temp::<String>(path_id, String::new()));
+                        let note_id = egui::Id::new(("autoeq-note", b));
+                        ui.data_mut(|d| {
+                            d.insert_temp(
+                                note_id,
+                                format!(
+                                    "Applied. Preamp: {preamp_db:+.1} dB — adjust the bus fader to match."
+                                ),
+                            )
+                        });
+                    }
+                    Err(e) => {
+                        let note_id = egui::Id::new(("autoeq-note", b));
+                        ui.data_mut(|d| d.insert_temp(note_id, format!("Error: {e}")));
+                    }
+                },
+                Err(e) => {
+                    let note_id = egui::Id::new(("autoeq-note", b));
+                    ui.data_mut(|d| d.insert_temp(note_id, format!("Could not read file: {e}")));
+                }
+            }
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(path_id, path));
+    let note_id = egui::Id::new(("autoeq-note", b));
+    if let Some(note) = ui.data(|d| d.get_temp::<String>(note_id)) {
+        ui.label(
+            RichText::new(&note)
+                .size(11.0)
+                .color(if note.starts_with("Error") || note.starts_with("Could") {
+                    theme::NOTE_TEXT()
+                } else {
+                    theme::METER_GREEN()
+                }),
+        );
+    }
+}
+
 /// Headphone crossfeed and stereo width, for one output.
 fn spatial_controls(ui: &mut Ui, p: &mut crate::engine::params::BusParams) {
     ui.horizontal(|ui| {
@@ -252,6 +387,13 @@ impl MixerApp {
                 let mut band = self.eq_band;
                 bus_eq_editor(ui, &mut p.eq, &mut band, accent);
                 self.eq_band = band;
+                ui.add_space(8.0);
+                ui.separator();
+                autoeq_section(ui, b, p);
+                ui.add_space(8.0);
+                ui.separator();
+                let gr = self.engine.levels().bus_comp_gain_reduction_db(b);
+                bus_comp_editor(ui, &mut p.comp, gr);
                 ui.add_space(8.0);
                 ui.separator();
                 spatial_controls(ui, p);
@@ -395,26 +537,30 @@ fn recordings_dir() -> std::path::PathBuf {
         .join("Wavemix")
 }
 
-fn clock(seconds: f64) -> String {
+pub(super) fn format_clock(seconds: f64) -> String {
     let s = seconds as u64;
     format!("{:02}:{:02}", s / 60, s % 60)
 }
 
+fn clock(seconds: f64) -> String {
+    format_clock(seconds)
+}
+
 impl MixerApp {
-    /// Start or stop recording. `bus` overrides the remembered choice of what to record.
+    /// Start or stop recording `bus`. `bus: None` uses the saved preference.
     pub(super) fn set_recording(&mut self, on: bool, bus: Option<usize>) {
         if let Some(b) = bus {
-            self.config.record_bus = b.min(crate::engine::params::BUSES - 1);
+            self.config.record_bus = b.min(BUSES - 1);
             self.config.save();
         }
-        let bus = self.config.record_bus.min(crate::engine::params::BUSES - 1);
+        let bus = self.config.record_bus.min(BUSES - 1);
         if !on {
-            if let Some((path, secs)) = self.engine.stop_recording() {
+            if let Some((path, secs)) = self.engine.stop_bus_recording(bus) {
                 self.recording_note = Some(format!("Saved {} ({})", path.display(), clock(secs)));
             }
             return;
         }
-        if self.engine.recording().is_some() {
+        if self.engine.recording_for_bus(bus).is_some() {
             return;
         }
         let path = recordings_dir().join(format!(
@@ -430,49 +576,80 @@ impl MixerApp {
 
     /// Record button and the choice of what to record, in the engine bar.
     pub(super) fn record_button(&mut self, ui: &mut Ui) {
-        let active = self.engine.recording();
-        let bus = self.config.record_bus.min(crate::engine::params::BUSES - 1);
+        let bus = self.config.record_bus.min(BUSES - 1);
+        let active = self.engine.recording_for_bus(bus);
+        let all_active = self.engine.all_recordings();
         let label = match &active {
-            Some((_, _, secs)) => format!("Stop  {}", clock(*secs)),
-            None => "Record".to_string(),
+            Some((_, secs)) => format!("Stop  {}", clock(*secs)),
+            None => {
+                if !all_active.is_empty() {
+                    format!("Record  ({}●)", all_active.len())
+                } else {
+                    "Record".to_string()
+                }
+            }
         };
         let red = theme::MUTE();
-        let resp = strip::toggle(ui, &label, active.is_some(), vec2(92.0, 30.0), red)
+        let resp = strip::toggle(ui, &label, active.is_some(), vec2(102.0, 30.0), red)
             .on_hover_text(match &active {
-                Some((_, path, _)) => format!("Recording to {}\nClick to stop", path.display()),
+                Some((path, _)) => format!("Recording to {}\nClick to stop", path.display()),
                 None => "Record one output to a WAV file".to_string(),
             });
         if resp.clicked() {
             self.set_recording(active.is_none(), None);
         }
         if active.is_some() {
-            // Keep the timer ticking.
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(250));
         }
-        // Which output to capture.
+        // Which output to capture; also shows all active recordings.
         let pick = strip::chip(ui, &self.config.bus_title(bus), 62.0, false)
             .on_hover_text("Which output to record");
         egui::Popup::menu(&pick).show(|ui| {
-            ui.set_min_width(180.0);
+            ui.set_min_width(200.0);
             strip::caption(ui, "RECORD THIS OUTPUT");
-            for b in 0..crate::engine::params::BUSES {
-                if ui
-                    .selectable_label(b == bus, self.config.bus_title(b))
-                    .clicked()
-                    && active.is_none()
-                {
+            for b in 0..BUSES {
+                let recording_this = self.engine.recording_for_bus(b).is_some();
+                let label = if recording_this {
+                    format!("● {}", self.config.bus_title(b))
+                } else {
+                    self.config.bus_title(b)
+                };
+                if ui.selectable_label(b == bus, label).clicked() {
                     self.config.record_bus = b;
                     self.config.save();
                     ui.close();
                 }
             }
-            if active.is_some() {
-                ui.label(
-                    RichText::new("Stop the recording to change it.")
-                        .size(11.0)
-                        .color(theme::TEXT_DIM()),
-                );
+            if !all_active.is_empty() {
+                ui.separator();
+                strip::caption(ui, "ACTIVE RECORDINGS");
+                let stops: Vec<usize> = all_active.iter().map(|(b, _, _)| *b).collect();
+                for (b, path, secs) in &all_active {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "● {} {} — {}",
+                                self.config.bus_title(*b),
+                                clock(*secs),
+                                path.file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("?")
+                            ))
+                            .size(11.0)
+                            .color(theme::MUTE()),
+                        );
+                    });
+                }
+                if ui.small_button("Stop all").clicked() {
+                    for b in stops {
+                        if let Some((path, secs)) = self.engine.stop_bus_recording(b) {
+                            self.recording_note =
+                                Some(format!("Saved {} ({})", path.display(), clock(secs)));
+                        }
+                    }
+                    ui.close();
+                }
             }
             ui.separator();
             if ui.button("Open the recordings folder").clicked() {
