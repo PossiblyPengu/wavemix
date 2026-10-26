@@ -438,6 +438,29 @@ impl MixerApp {
                             .strong()
                             .color(accent),
                     );
+                    // Which strips are feeding this bus.
+                    let ep = self.engine.params();
+                    let fed_by: Vec<String> = (0..STRIPS)
+                        .filter(|&i| ep.strips[i].sends[b])
+                        .map(|i| self.config.strip_title(i))
+                        .collect();
+                    if !fed_by.is_empty() {
+                        let summary = fed_by.join(", ");
+                        let label = strip::truncate(ui, &format!("← {summary}"), 320.0, 11.0);
+                        ui.label(
+                            RichText::new(label)
+                                .size(11.0)
+                                .color(theme::TEXT_DIM()),
+                        )
+                        .on_hover_text(format!("Feeds from: {summary}"));
+                    } else {
+                        ui.label(
+                            RichText::new("← nothing feeds this bus")
+                                .size(11.0)
+                                .color(theme::NOTE_TEXT()),
+                        )
+                        .on_hover_text("No input strips are sending to this bus");
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button("Close").clicked() {
                             self.bus_editing = None;
