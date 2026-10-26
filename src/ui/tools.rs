@@ -250,7 +250,7 @@ fn bus_comp_editor(ui: &mut Ui, c: &mut CompParams, gain_reduction_db: f32) {
     );
 }
 
-/// AutoEQ profile loader: paste text or type a file path.
+/// AutoEQ profile loader: paste a path, click Load, or drag-and-drop a .txt file.
 fn autoeq_section(ui: &mut Ui, b: usize, p: &mut BusParams) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("AutoEQ").strong());
@@ -262,8 +262,33 @@ fn autoeq_section(ui: &mut Ui, b: usize, p: &mut BusParams) {
             .color(theme::TEXT_DIM()),
         );
     });
+
+    // --- drag-and-drop: check for a dropped .txt file ---
+    let dropped_path = ui.ctx().input(|i| {
+        i.raw
+            .dropped_files
+            .iter()
+            .find(|f| {
+                f.path
+                    .as_ref()
+                    .map_or(false, |p| p.extension().map_or(false, |e| e.eq_ignore_ascii_case("txt")))
+            })
+            .and_then(|f| f.path.clone())
+    });
+    let hovering_txt = ui.ctx().input(|i| {
+        !i.raw.hovered_files.is_empty()
+    });
+
     let path_id = egui::Id::new(("autoeq-path", b));
+    let note_id = egui::Id::new(("autoeq-note", b));
     let mut path: String = ui.data(|d| d.get_temp(path_id).unwrap_or_default());
+
+    let load_path: Option<std::path::PathBuf> = if let Some(dp) = dropped_path {
+        Some(dp)
+    } else {
+        None
+    };
+
     ui.horizontal(|ui| {
         ui.add(
             egui::TextEdit::singleline(&mut path)
@@ -272,18 +297,16 @@ fn autoeq_section(ui: &mut Ui, b: usize, p: &mut BusParams) {
         );
         if ui
             .button("Load")
-            .on_hover_text(
-                "Read the file and apply its filters to this bus's equalizer",
-            )
+            .on_hover_text("Read the file and apply its filters to this bus's equalizer")
             .clicked()
             && !path.is_empty()
         {
-            match std::fs::read_to_string(&path) {
+            let path_copy = path.clone();
+            match std::fs::read_to_string(&path_copy) {
                 Ok(text) => match autoeq::parse(&text) {
                     Ok((preamp_db, eq)) => {
                         p.eq = eq;
                         ui.data_mut(|d| d.insert_temp::<String>(path_id, String::new()));
-                        let note_id = egui::Id::new(("autoeq-note", b));
                         ui.data_mut(|d| {
                             d.insert_temp(
                                 note_id,
@@ -294,19 +317,56 @@ fn autoeq_section(ui: &mut Ui, b: usize, p: &mut BusParams) {
                         });
                     }
                     Err(e) => {
-                        let note_id = egui::Id::new(("autoeq-note", b));
                         ui.data_mut(|d| d.insert_temp(note_id, format!("Error: {e}")));
                     }
                 },
                 Err(e) => {
-                    let note_id = egui::Id::new(("autoeq-note", b));
                     ui.data_mut(|d| d.insert_temp(note_id, format!("Could not read file: {e}")));
                 }
             }
         }
+        if hovering_txt {
+            ui.label(
+                RichText::new("Drop to load")
+                    .size(11.0)
+                    .color(theme::ACCENT()),
+            );
+        } else {
+            ui.label(
+                RichText::new("or drag a .txt file here")
+                    .size(11.0)
+                    .color(theme::TEXT_DIM()),
+            );
+        }
     });
     ui.data_mut(|d| d.insert_temp(path_id, path));
-    let note_id = egui::Id::new(("autoeq-note", b));
+
+    // Apply a dropped file.
+    if let Some(dp) = load_path {
+        match std::fs::read_to_string(&dp) {
+            Ok(text) => match autoeq::parse(&text) {
+                Ok((preamp_db, eq)) => {
+                    p.eq = eq;
+                    ui.data_mut(|d| {
+                        d.insert_temp(
+                            note_id,
+                            format!(
+                                "Applied {}. Preamp: {preamp_db:+.1} dB — adjust the bus fader to match.",
+                                dp.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                            ),
+                        )
+                    });
+                }
+                Err(e) => {
+                    ui.data_mut(|d| d.insert_temp(note_id, format!("Error: {e}")));
+                }
+            },
+            Err(e) => {
+                ui.data_mut(|d| d.insert_temp(note_id, format!("Could not read file: {e}")));
+            }
+        }
+    }
+
     if let Some(note) = ui.data(|d| d.get_temp::<String>(note_id)) {
         ui.label(
             RichText::new(&note)

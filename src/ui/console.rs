@@ -159,7 +159,7 @@ impl MixerApp {
         let flow_id = egui::Id::new("show-signal-flow");
         if ui.data(|d| d.get_temp::<bool>(flow_id).unwrap_or(false)) {
             ui.add_space(6.0);
-            self.signal_flow(ui, &params);
+            self.signal_flow(ui, &mut params);
         }
         ui.add_space(8.0);
 
@@ -1317,7 +1317,7 @@ impl MixerApp {
 
     // --- signal flow routing matrix ------------------------------------------------------------
 
-    fn signal_flow(&self, ui: &mut Ui, params: &EngineParams) {
+    fn signal_flow(&mut self, ui: &mut Ui, params: &mut EngineParams) {
         let bus_colors = bus_colors();
         let levels = self.engine.levels();
         egui::Frame::new()
@@ -1339,7 +1339,7 @@ impl MixerApp {
                     );
                     ui.add_space(12.0);
                     ui.label(
-                        egui::RichText::new("● = sends to bus   size = signal level   dim = muted")
+                        egui::RichText::new("● = sends to bus   click to toggle   size = signal level   dim = muted")
                             .size(10.0)
                             .color(theme::TEXT_DIM()),
                     );
@@ -1363,9 +1363,10 @@ impl MixerApp {
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Level").size(10.0).color(theme::TEXT_DIM()));
                 });
-                // One row per strip.
+                // One row per strip. Collect clicks to apply after the layout loop to avoid
+                // aliasing the params borrow inside the closure.
+                let mut toggle: Option<(usize, usize)> = None;
                 for i in 0..STRIPS {
-                    let sp = &params.strips[i];
                     let is_virtual = i >= HARDWARE_STRIPS;
                     let strip_color = if is_virtual {
                         theme::ACCENT_IN()
@@ -1373,7 +1374,9 @@ impl MixerApp {
                         theme::ACCENT()
                     };
                     let any_solo = params.strips.iter().any(|s| s.solo);
-                    let audible = !sp.mute && !(any_solo && !sp.solo);
+                    let muted = params.strips[i].mute;
+                    let solo = params.strips[i].solo;
+                    let audible = !muted && !(any_solo && !solo);
                     let dim = if audible { 1.0 } else { 0.35 };
                     ui.horizontal(|ui| {
                         // Strip name, left-aligned and truncated.
@@ -1387,17 +1390,17 @@ impl MixerApp {
                                     .color(strip_color.gamma_multiply(dim)),
                             ),
                         );
-                        // Send dots for each bus.
+                        // Send dots for each bus — click to toggle routing.
                         for b in 0..BUSES {
-                            let sends = sp.sends[b];
+                            let sends = params.strips[i].sends[b];
                             let bus_peak = if sends {
-                                let sp = self.engine.levels().strip(i);
-                                sp[0].max(sp[1])
+                                let lv = levels.strip(i);
+                                lv[0].max(lv[1])
                             } else {
                                 0.0
                             };
                             let (rect, resp) =
-                                ui.allocate_exact_size(vec2(cell, 22.0), Sense::hover());
+                                ui.allocate_exact_size(vec2(cell, 22.0), Sense::click());
                             let center = rect.center();
                             if sends {
                                 let r = (4.0 + bus_peak * 8.0).min(10.0) * dim;
@@ -1415,18 +1418,20 @@ impl MixerApp {
                             }
                             let tip = if sends {
                                 format!(
-                                    "{} → {}",
+                                    "{} → {} — click to remove",
                                     self.config.strip_title(i),
                                     bus_name(b)
                                 )
                             } else {
                                 format!(
-                                    "{} does not send to {}",
+                                    "Click to send {} to {}",
                                     self.config.strip_title(i),
                                     bus_name(b)
                                 )
                             };
-                            resp.on_hover_text(tip);
+                            if resp.on_hover_text(tip).clicked() {
+                                toggle = Some((i, b));
+                            }
                         }
                         // Strip level mini-meter.
                         ui.add_space(8.0);
@@ -1447,7 +1452,11 @@ impl MixerApp {
                         }
                     });
                 }
-                // Bus output row.
+                if let Some((i, b)) = toggle {
+                    params.strips[i].sends[b] = !params.strips[i].sends[b];
+                }
+                // Bus output row — click to open that bus's editor.
+                let mut open_bus: Option<usize> = None;
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
                     ui.add_sized(
@@ -1459,14 +1468,15 @@ impl MixerApp {
                         ),
                     );
                     for b in 0..BUSES {
-                        let bp = &params.buses[b];
+                        let muted = params.buses[b].mute;
+                        let gain_db = params.buses[b].gain_db;
                         let peak = {
                             let l = levels.bus(b);
                             l[0].max(l[1])
                         };
-                        let dim = if bp.mute { 0.3 } else { 1.0 };
+                        let dim = if muted { 0.3 } else { 1.0 };
                         let (rect, resp) =
-                            ui.allocate_exact_size(vec2(cell, 22.0), Sense::hover());
+                            ui.allocate_exact_size(vec2(cell, 22.0), Sense::click());
                         let bar_h = (rect.height() * (peak * dim).min(1.0)) as f32;
                         let fill = egui::Rect::from_min_size(
                             egui::pos2(rect.center().x - 6.0, rect.bottom() - bar_h),
@@ -1477,14 +1487,21 @@ impl MixerApp {
                             2.0,
                             bus_colors[b].gamma_multiply(dim),
                         );
-                        resp.on_hover_text(format!(
-                            "{}: {:.1} dB{}",
+                        let tip = format!(
+                            "{}: {:.1} dB{} — click to open EQ",
                             bus_name(b),
-                            params.buses[b].gain_db,
-                            if bp.mute { " (muted)" } else { "" }
-                        ));
+                            gain_db,
+                            if muted { " (muted)" } else { "" }
+                        );
+                        if resp.on_hover_text(tip).clicked() {
+                            open_bus = Some(b);
+                        }
                     }
                 });
+                if let Some(b) = open_bus {
+                    self.bus_editing = if self.bus_editing == Some(b) { None } else { Some(b) };
+                    self.editing = None;
+                }
             });
     }
 
