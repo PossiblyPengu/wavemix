@@ -416,7 +416,7 @@ fn spatial_controls(ui: &mut Ui, p: &mut crate::engine::params::BusParams) {
 }
 
 impl MixerApp {
-    /// The editor panel for one output bus's equaliser.
+    /// The editor panel for one output bus.
     pub(super) fn bus_editor(
         &mut self,
         ui: &mut Ui,
@@ -430,9 +430,10 @@ impl MixerApp {
             .corner_radius(theme::R_CARD)
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
+                // Title row.
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("{} equalizer", self.config.bus_title(b)))
+                        RichText::new(self.config.bus_title(b))
                             .size(13.0)
                             .strong()
                             .color(accent),
@@ -443,20 +444,50 @@ impl MixerApp {
                         }
                     });
                 });
+                // Tab bar — matches the strip editor's look.
+                let tab_id = egui::Id::new(("bus-tab", b));
+                let mut tab: usize = ui.data(|d| d.get_temp(tab_id).unwrap_or(0));
+                ui.horizontal(|ui| {
+                    ui.add_space(2.0);
+                    let stereo_on = p.crossfeed > 0.005 || (p.width - 1.0).abs() > 0.05;
+                    for (i, (name, active)) in [
+                        ("Equalizer", p.eq.enabled),
+                        ("AutoEQ", false),
+                        ("Compressor", p.comp.enabled),
+                        ("Stereo", stereo_on),
+                    ]
+                    .iter()
+                    .enumerate()
+                    {
+                        let label = if *active {
+                            RichText::new(*name).color(if tab == i {
+                                theme::ON_ACCENT()
+                            } else {
+                                theme::ACCENT()
+                            })
+                        } else {
+                            RichText::new(*name)
+                        };
+                        if ui.selectable_label(tab == i, label).clicked() {
+                            tab = i;
+                        }
+                    }
+                });
+                ui.data_mut(|d| d.insert_temp(tab_id, tab));
                 ui.separator();
-                let mut band = self.eq_band;
-                bus_eq_editor(ui, &mut p.eq, &mut band, accent);
-                self.eq_band = band;
-                ui.add_space(8.0);
-                ui.separator();
-                autoeq_section(ui, b, p);
-                ui.add_space(8.0);
-                ui.separator();
-                let gr = self.engine.levels().bus_comp_gain_reduction_db(b);
-                bus_comp_editor(ui, &mut p.comp, gr);
-                ui.add_space(8.0);
-                ui.separator();
-                spatial_controls(ui, p);
+                match tab {
+                    1 => autoeq_section(ui, b, p),
+                    2 => {
+                        let gr = self.engine.levels().bus_comp_gain_reduction_db(b);
+                        bus_comp_editor(ui, &mut p.comp, gr);
+                    }
+                    3 => spatial_controls(ui, p),
+                    _ => {
+                        let mut band = self.eq_band;
+                        bus_eq_editor(ui, &mut p.eq, &mut band, accent);
+                        self.eq_band = band;
+                    }
+                }
             });
     }
 

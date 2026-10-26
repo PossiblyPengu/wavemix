@@ -1306,7 +1306,7 @@ impl MixerApp {
             // The bus equaliser; also keeps the bottoms of both panels level.
             let open = self.bus_editing == Some(b);
             if strip::process_button(ui, "EQ + Comp", p.eq.enabled || p.comp.enabled, open, vec2(CONSOLE_STRIP_W, 28.0))
-                .on_hover_text("Six-band equalizer and compressor for this whole output")
+                .on_hover_text("Six-band EQ, bus compressor, AutoEQ loader and stereo controls for this output")
                 .clicked()
             {
                 self.bus_editing = if open { None } else { Some(b) };
@@ -1393,6 +1393,14 @@ impl MixerApp {
                         // Send dots for each bus — click to toggle routing.
                         for b in 0..BUSES {
                             let sends = params.strips[i].sends[b];
+                            // Check if enabling this send would create a feedback loop.
+                            let loops = match (
+                                &self.config.engine.io.inputs[i],
+                                &self.config.engine.io.outputs[b],
+                            ) {
+                                (Some(inp), Some(out)) => feeds_itself(inp, out),
+                                _ => false,
+                            };
                             let bus_peak = if sends {
                                 let lv = levels.strip(i);
                                 lv[0].max(lv[1])
@@ -1402,21 +1410,43 @@ impl MixerApp {
                             let (rect, resp) =
                                 ui.allocate_exact_size(vec2(cell, 22.0), Sense::click());
                             let center = rect.center();
+                            let dot_color = if loops && sends {
+                                theme::MUTE() // red: active loop
+                            } else {
+                                bus_colors[b]
+                            };
                             if sends {
                                 let r = (4.0 + bus_peak * 8.0).min(10.0) * dim;
                                 ui.painter().circle_filled(
                                     center,
                                     r,
-                                    bus_colors[b].gamma_multiply(dim),
+                                    dot_color.gamma_multiply(dim),
                                 );
                             } else {
+                                let ring_color = if loops {
+                                    theme::NOTE_TEXT().gamma_multiply(0.7)
+                                } else {
+                                    theme::BORDER()
+                                };
                                 ui.painter().circle_stroke(
                                     center,
                                     3.5,
-                                    egui::Stroke::new(1.0, theme::BORDER()),
+                                    egui::Stroke::new(1.0, ring_color),
                                 );
                             }
-                            let tip = if sends {
+                            let tip = if loops && sends {
+                                format!(
+                                    "⚠ Feedback loop! {} listens to the cable {} plays into — click to remove",
+                                    self.config.strip_title(i),
+                                    bus_name(b)
+                                )
+                            } else if loops {
+                                format!(
+                                    "Would create a feedback loop: {} listens to the cable {} plays into",
+                                    self.config.strip_title(i),
+                                    bus_name(b)
+                                )
+                            } else if sends {
                                 format!(
                                     "{} → {} — click to remove",
                                     self.config.strip_title(i),
@@ -1429,7 +1459,8 @@ impl MixerApp {
                                     bus_name(b)
                                 )
                             };
-                            if resp.on_hover_text(tip).clicked() {
+                            // Don't toggle ON a send that would create a loop.
+                            if resp.on_hover_text(tip).clicked() && !(loops && !sends) {
                                 toggle = Some((i, b));
                             }
                         }
